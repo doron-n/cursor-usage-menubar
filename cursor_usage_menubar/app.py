@@ -60,28 +60,19 @@ class CursorUsageApp(rumps.App):
     def __init__(self) -> None:
         super().__init__("Cursor · —", quit_button=None)
         self._snapshot: UsageSnapshot | None = None
-        self._info_items: list[rumps.MenuItem] = []
-        self.menu = [
-            rumps.separator,
-            rumps.MenuItem("View Model Breakdown…", callback=self.view_breakdown),
-            rumps.MenuItem("Refresh Now", callback=self.refresh_now),
-            rumps.MenuItem("Open Cursor Dashboard", callback=self.open_dashboard),
-            rumps.separator,
-            rumps.MenuItem("Quit", callback=self.quit_app),
-        ]
 
     def _rebuild_info(self, snapshot: UsageSnapshot) -> None:
-        for item in self._info_items:
-            try:
-                del self.menu[item.title]
-            except Exception:
-                pass
-        self._info_items = []
-        for row in reversed(info_rows(snapshot)):
+        self.menu.clear()
+        for row in info_rows(snapshot):
             item = rumps.MenuItem(row)
             item.set_callback(None)
-            self.menu.insert(0, item)
-            self._info_items.append(item)
+            self.menu.add(item)
+        self.menu.add(rumps.separator)
+        self.menu.add(rumps.MenuItem("View Model Breakdown…", callback=self.view_breakdown))
+        self.menu.add(rumps.MenuItem("Refresh Now", callback=self.refresh_now))
+        self.menu.add(rumps.MenuItem("Open Cursor Dashboard", callback=self.open_dashboard))
+        self.menu.add(rumps.separator)
+        self.menu.add(rumps.MenuItem("Quit", callback=self.quit_app))
 
     def _apply(self, snapshot: UsageSnapshot) -> None:
         self._snapshot = snapshot

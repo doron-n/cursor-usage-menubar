@@ -146,7 +146,12 @@ def merge_snapshot(
     children_by_label: dict[str, dict[str, int]] = defaultdict(
         lambda: {"cents": 0, "in": 0, "out": 0, "n": 0}
     )
-    for event in filtered.get("usageEvents") or filtered.get("events") or []:
+    for event in (
+        filtered.get("usageEvents")
+        or filtered.get("events")
+        or filtered.get("usageEventsDisplay")
+        or []
+    ):
         if not isinstance(event, dict):
             continue
         model_name = str(event.get("model") or "")

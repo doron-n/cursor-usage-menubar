@@ -221,6 +221,43 @@ class MergeTest(unittest.TestCase):
         self.assertEqual(auto.children[0].total_cents, 1000)
         self.assertEqual(auto.children[0].request_count, 2)
 
+    def test_usage_events_display_key_becomes_children(self):
+        snap = merge_snapshot(
+            session=_session(),
+            usage_summary={
+                "individualUsage": {"overall": {"used": 1000, "limit": 2000, "remaining": 1000}}
+            },
+            period_usage=None,
+            aggregated={
+                "totalCostCents": 1000,
+                "aggregations": [
+                    {"modelIntent": "auto-smart", "totalCents": 1000, "inputTokens": 8, "outputTokens": 2}
+                ],
+            },
+            filtered={
+                "totalUsageEventsCount": 2,
+                "usageEventsDisplay": [
+                    {
+                        "model": "Cursor Grok 4.5 (Auto Balanced)",
+                        "chargedCents": 750,
+                        "tokenUsage": {"inputTokens": 4, "outputTokens": 1},
+                    },
+                    {
+                        "model": "Cursor Grok 4.5 (Auto Balanced)",
+                        "chargedCents": 250,
+                        "tokenUsage": {"inputTokens": 4, "outputTokens": 1},
+                    },
+                ],
+            },
+            plan_info=None,
+        )
+        auto = snap.models[0]
+        self.assertTrue(auto.is_auto)
+        self.assertEqual(len(auto.children), 1)
+        self.assertEqual(auto.children[0].label, "Grok 4.5")
+        self.assertEqual(auto.children[0].total_cents, 1000)
+        self.assertEqual(auto.children[0].request_count, 2)
+
 
 if __name__ == "__main__":
     unittest.main()
