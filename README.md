@@ -28,6 +28,8 @@ chmod +x install.sh
 ./install.sh uninstall
 ```
 
+After `./install.sh install`, the LaunchAgent's `KeepAlive` means clicking Quit will relaunch the app; run `./install.sh uninstall` if you actually want it to stop.
+
 Menu title looks like `Cursor · $237.34 · 48%`. Click it for account/plan/spend/allowance/remaining/cycle/top model, then:
 
 - View Model Breakdown… (native window, Auto accordion)

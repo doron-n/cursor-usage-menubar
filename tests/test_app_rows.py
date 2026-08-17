@@ -1,6 +1,7 @@
 import unittest
+from unittest.mock import patch
 
-from cursor_usage_menubar.app import info_rows
+from cursor_usage_menubar.app import _safe_fetch_usage, info_rows
 from cursor_usage_menubar.models import ModelSpend, UsageSnapshot
 
 
@@ -36,6 +37,20 @@ class InfoRowsTest(unittest.TestCase):
         snap = UsageSnapshot.empty("Open Cursor to refresh your session")
         rows = info_rows(snap)
         self.assertEqual(rows[0], "Open Cursor to refresh your session")
+
+    def test_safe_fetch_usage_degrades_instead_of_raising(self):
+        with patch(
+            "cursor_usage_menubar.app.fetch_usage", side_effect=RuntimeError("boom")
+        ):
+            snap = _safe_fetch_usage()
+        self.assertIsNone(snap.spent_cents)
+        self.assertEqual(snap.status, "Open Cursor to refresh your session")
+
+    def test_safe_fetch_usage_passes_through_on_success(self):
+        good = UsageSnapshot.empty("fine")
+        with patch("cursor_usage_menubar.app.fetch_usage", return_value=good):
+            snap = _safe_fetch_usage()
+        self.assertIs(snap, good)
 
 
 if __name__ == "__main__":

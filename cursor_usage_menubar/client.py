@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import http.client
 import json
 import ssl
 import urllib.error
@@ -13,7 +14,21 @@ from cursor_usage_menubar.models import UsageSnapshot
 
 USAGE_SUMMARY_URL = "https://cursor.com/api/usage-summary"
 API2 = "https://api2.cursor.sh/aiserver.v1.DashboardService"
-_TIMEOUT = 20
+_TIMEOUT = 8
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Never follow redirects, so a redirect can't be used to smuggle the
+    Cookie/Authorization headers we set to a different host."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
+_OPENER = urllib.request.build_opener(
+    _NoRedirectHandler, urllib.request.HTTPSHandler(context=_SSL_CONTEXT)
+)
 
 
 def json_request(
@@ -34,17 +49,19 @@ def json_request(
         req.add_header("Connect-Protocol-Version", "1")
     if cookie:
         req.add_header("Cookie", cookie)
-    ctx = ssl.create_default_context(cafile=certifi.where())
     try:
-        with urllib.request.urlopen(req, context=ctx, timeout=_TIMEOUT) as resp:
+        with _OPENER.open(req, timeout=_TIMEOUT) as resp:
             raw = resp.read()
-    except (urllib.error.URLError, TimeoutError, OSError):
+    except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException):
         return None
     if not raw:
         return {}
     try:
         parsed = json.loads(raw)
-    except json.JSONDecodeError:
+    except ValueError:
+        # json.JSONDecodeError is a ValueError; bytes.decode() inside
+        # json.loads can also raise UnicodeDecodeError (also a ValueError)
+        # if the body isn't valid UTF-8.
         return None
     return parsed if isinstance(parsed, dict) else None
 

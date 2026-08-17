@@ -180,23 +180,48 @@ def merge_snapshot(
     ]
 
     models: list[ModelSpend] = []
+    auto_cents = 0
+    auto_input = 0
+    auto_output = 0
+    has_auto = False
     for row in aggregated.get("aggregations") or []:
         if not isinstance(row, dict):
             continue
         intent = str(row.get("modelIntent") or row.get("model") or "")
         cents = _as_int(row.get("totalCents")) or 0
         inp, out = _tokens(row)
-        auto = is_auto_intent(intent)
-        kids = scale_auto_children(cents, raw_children) if auto else ()
+        if is_auto_intent(intent):
+            # All auto-intent buckets (auto-smart, default, composer-auto, ...)
+            # collapse into a single Auto row per spec, so children are scaled
+            # once against the combined total instead of once per bucket.
+            has_auto = True
+            auto_cents += cents
+            auto_input += inp
+            auto_output += out
+            continue
         models.append(
             ModelSpend(
-                label=_auto_label(intent) if auto else _human_label(intent),
+                label=_human_label(intent),
                 model_intent=intent,
                 total_cents=cents,
                 input_tokens=inp,
                 output_tokens=out,
+                request_count=0,
+                is_auto=False,
+                children=(),
+            )
+        )
+    if has_auto:
+        kids = scale_auto_children(auto_cents, raw_children)
+        models.append(
+            ModelSpend(
+                label=_auto_label("auto"),
+                model_intent="auto",
+                total_cents=auto_cents,
+                input_tokens=auto_input,
+                output_tokens=auto_output,
                 request_count=sum(k.request_count for k in kids) if kids else 0,
-                is_auto=auto,
+                is_auto=True,
                 children=kids,
             )
         )

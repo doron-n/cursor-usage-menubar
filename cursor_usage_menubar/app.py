@@ -11,6 +11,17 @@ from cursor_usage_menubar.formatters import dollars, menu_title
 from cursor_usage_menubar.models import UsageSnapshot
 
 DASHBOARD_URL = "https://cursor.com/dashboard/usage"
+_FETCH_ERROR_STATUS = "Open Cursor to refresh your session"
+
+
+def _safe_fetch_usage() -> UsageSnapshot:
+    """fetch_usage() talks to the network and parses third-party JSON; any
+    unexpected failure here must degrade gracefully instead of crashing the
+    menu bar app."""
+    try:
+        return fetch_usage()
+    except Exception:
+        return UsageSnapshot.empty(_FETCH_ERROR_STATUS)
 
 
 def info_rows(snapshot: UsageSnapshot) -> list[str]:
@@ -81,13 +92,13 @@ class CursorUsageApp(rumps.App):
 
     @rumps.timer(300)
     def poll(self, _sender=None) -> None:
-        self._apply(fetch_usage())
+        self._apply(_safe_fetch_usage())
 
     def refresh_now(self, _sender=None) -> None:
-        self._apply(fetch_usage())
+        self._apply(_safe_fetch_usage())
 
     def view_breakdown(self, _sender=None) -> None:
-        snap = self._snapshot or fetch_usage()
+        snap = self._snapshot or _safe_fetch_usage()
         self._snapshot = snap
         show_breakdown(snap)
 

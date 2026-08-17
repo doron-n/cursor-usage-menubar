@@ -258,6 +258,58 @@ class MergeTest(unittest.TestCase):
         self.assertEqual(auto.children[0].total_cents, 1000)
         self.assertEqual(auto.children[0].request_count, 2)
 
+    def test_auto_smart_and_default_fold_into_single_auto_row(self):
+        snap = merge_snapshot(
+            session=_session(),
+            usage_summary={
+                "individualUsage": {"overall": {"used": 1000, "limit": 2000, "remaining": 1000}}
+            },
+            period_usage=None,
+            aggregated={
+                "aggregations": [
+                    {
+                        "modelIntent": "auto-smart",
+                        "totalCents": 600,
+                        "inputTokens": 6,
+                        "outputTokens": 3,
+                    },
+                    {
+                        "modelIntent": "default",
+                        "totalCents": 400,
+                        "inputTokens": 4,
+                        "outputTokens": 2,
+                    },
+                ],
+            },
+            filtered={
+                "usageEvents": [
+                    {
+                        "model": "Cursor Grok 4.5 (Auto Balanced)",
+                        "chargedCents": 750,
+                        "tokenUsage": {"inputTokens": 4, "outputTokens": 1},
+                    },
+                    {
+                        "model": "GPT-5.6 Sol (default)",
+                        "chargedCents": 250,
+                        "tokenUsage": {"inputTokens": 1, "outputTokens": 1},
+                    },
+                ]
+            },
+            plan_info=None,
+        )
+        auto_rows = [m for m in snap.models if m.is_auto]
+        self.assertEqual(len(auto_rows), 1)
+        auto = auto_rows[0]
+        self.assertEqual(auto.label, "Auto")
+        self.assertEqual(auto.total_cents, 1000)
+        self.assertEqual(auto.input_tokens, 10)
+        self.assertEqual(auto.output_tokens, 5)
+        # Both auto-smart and default events feed the same children pool,
+        # each child counted once, summing back to the combined Auto total.
+        self.assertEqual(sum(c.total_cents for c in auto.children), 1000)
+        labels = sorted(c.label for c in auto.children)
+        self.assertEqual(labels, ["GPT-5.6 Sol", "Grok 4.5"])
+
 
 if __name__ == "__main__":
     unittest.main()
