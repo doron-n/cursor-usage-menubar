@@ -112,17 +112,7 @@ class BreakdownController(NSObject):
 
     def show_(self, snapshot: UsageSnapshot):
         self.snapshot = snapshot
-        if self.window is None:
-            self.window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
-                NSMakeRect(0, 0, WINDOW_WIDTH, 640),
-                NSWindowStyleMaskTitled
-                | NSWindowStyleMaskClosable
-                | NSWindowStyleMaskMiniaturizable,
-                NSBackingStoreBuffered,
-                False,
-            )
-            self.window.setTitle_("Cursor Usage")
-            self.window.center()
+        self._ensure_window()
         self.render()
         self.window.makeKeyAndOrderFront_(None)
         NSApp.activateIgnoringOtherApps_(True)
@@ -132,17 +122,44 @@ class BreakdownController(NSObject):
         self.render()
 
     @python_method
+    def _ensure_window(self):
+        if self.window is not None and self._window_alive():
+            return
+        self.window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
+            NSMakeRect(0, 0, WINDOW_WIDTH, 640),
+            NSWindowStyleMaskTitled
+            | NSWindowStyleMaskClosable
+            | NSWindowStyleMaskMiniaturizable,
+            NSBackingStoreBuffered,
+            False,
+        )
+        self.window.setTitle_("Cursor Usage")
+        # Keep the singleton window alive after the user closes it so this
+        # reusable controller never re-messages a deallocated NSWindow.
+        self.window.setReleasedWhenClosed_(False)
+        self.window.setBackgroundColor_(NSColor.controlBackgroundColor())
+        self.window.center()
+
+    @python_method
+    def _window_alive(self):
+        try:
+            self.window.isVisible()
+            return True
+        except Exception:
+            return False
+
+    @python_method
     def render(self):
         snap = self.snapshot
         height = max(640, layout_height(snap, self.auto_expanded))
         scroll = NSScrollView.alloc().initWithFrame_(self.window.contentView().bounds())
         scroll.setHasVerticalScroller_(True)
         scroll.setBorderType_(0)
-        scroll.setDrawsBackground_(False)
+        scroll.setDrawsBackground_(True)
+        scroll.setBackgroundColor_(NSColor.controlBackgroundColor())
         scroll.setAutoresizingMask_(18)
         doc = FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, WINDOW_WIDTH, height))
         doc.setWantsLayer_(True)
-        NSColor.controlBackgroundColor().set()
         y = PAD
         y = self._header(doc, snap, y)
         y = self._summary(doc, snap, y)

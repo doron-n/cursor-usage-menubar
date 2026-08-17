@@ -41,5 +41,55 @@ class BreakdownLayoutTest(unittest.TestCase):
         self.assertTrue(callable(show_breakdown))
 
 
+class BreakdownWindowTest(unittest.TestCase):
+    def _controller(self):
+        from cursor_usage_menubar.breakdown import BreakdownController
+
+        ctrl = BreakdownController.alloc().init()
+        ctrl.snapshot = _snap()
+        return ctrl
+
+    def test_window_not_released_when_closed(self):
+        ctrl = self._controller()
+        ctrl._ensure_window()
+        self.assertFalse(ctrl.window.isReleasedWhenClosed())
+
+    def test_ensure_window_reuses_existing_window(self):
+        ctrl = self._controller()
+        ctrl._ensure_window()
+        first = ctrl.window
+        ctrl._ensure_window()
+        self.assertIs(ctrl.window, first)
+
+    def test_ensure_window_recreates_when_window_gone(self):
+        ctrl = self._controller()
+        ctrl._ensure_window()
+        first = ctrl.window
+        ctrl._window_alive = lambda: False
+        ctrl._ensure_window()
+        self.assertIsNot(ctrl.window, first)
+
+    def test_window_background_is_control_background_color(self):
+        from AppKit import NSColor
+
+        ctrl = self._controller()
+        ctrl._ensure_window()
+        self.assertTrue(
+            ctrl.window.backgroundColor().isEqual_(NSColor.controlBackgroundColor())
+        )
+
+    def test_scroll_view_draws_control_background(self):
+        from AppKit import NSColor
+
+        ctrl = self._controller()
+        ctrl._ensure_window()
+        ctrl.render()
+        scroll = ctrl.window.contentView()
+        self.assertTrue(scroll.drawsBackground())
+        self.assertTrue(
+            scroll.backgroundColor().isEqual_(NSColor.controlBackgroundColor())
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
