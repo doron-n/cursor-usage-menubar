@@ -14,18 +14,18 @@ from cursor_usage_menubar.models import ModelSpend, Session, UsageSnapshot
 def scale_auto_children(
     auto_total: int, children: list[ModelSpend]
 ) -> tuple[ModelSpend, ...]:
-    if not children:
+    if not children or auto_total <= 0:
         return ()
     child_sum = sum(c.total_cents for c in children)
-    if child_sum <= 0 or auto_total <= 0:
-        return tuple(children)
+    if child_sum <= 0:
+        return ()
     scaled: list[ModelSpend] = []
     allocated = 0
     for i, child in enumerate(children):
         if i == len(children) - 1:
             cents = auto_total - allocated
         else:
-            cents = int(round(auto_total * (child.total_cents / child_sum)))
+            cents = int(auto_total * (child.total_cents / child_sum))
             allocated += cents
         scaled.append(
             ModelSpend(
@@ -109,11 +109,12 @@ def merge_snapshot(
     if not isinstance(plan_usage, dict):
         plan_usage = {}
 
-    spent = _as_int(overall.get("used"))
     limit = _as_int(overall.get("limit"))
-    remaining = _as_int(overall.get("remaining"))
-    if limit is None or limit <= 0:
-        spent = _as_int(plan_usage.get("used")) if spent is None else spent
+    if limit is not None and limit > 0:
+        spent = _as_int(overall.get("used"))
+        remaining = _as_int(overall.get("remaining"))
+    else:
+        spent = _as_int(plan_usage.get("used"))
         limit = _as_int(plan_usage.get("limit"))
         remaining = _as_int(plan_usage.get("remaining"))
     if spent is None:

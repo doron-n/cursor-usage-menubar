@@ -100,6 +100,86 @@ class MergeTest(unittest.TestCase):
         self.assertEqual(scaled[0].total_cents, 800)
         self.assertEqual(scaled[1].total_cents, 200)
 
+    def test_period_wins_wholesale_when_summary_limit_invalid(self):
+        snap = merge_snapshot(
+            session=_session(),
+            usage_summary={
+                "individualUsage": {"overall": {"used": 99999, "limit": 0, "remaining": 0}}
+            },
+            period_usage={
+                "planUsage": {"used": 1200, "limit": 4000, "remaining": 2800},
+            },
+            aggregated=None,
+            filtered=None,
+            plan_info=None,
+        )
+        self.assertEqual(snap.spent_cents, 1200)
+        self.assertEqual(snap.limit_cents, 4000)
+        self.assertEqual(snap.remaining_cents, 2800)
+        self.assertEqual(snap.percent, 30)
+
+    def test_auto_with_zero_total_has_no_children(self):
+        children = [
+            ModelSpend(
+                label="Grok 4.5",
+                model_intent="grok",
+                total_cents=80,
+                input_tokens=1,
+                output_tokens=1,
+                request_count=2,
+                is_auto=False,
+                children=(),
+            ),
+        ]
+        self.assertEqual(scale_auto_children(0, children), ())
+
+        snap = merge_snapshot(
+            session=_session(),
+            usage_summary={
+                "individualUsage": {"overall": {"used": 100, "limit": 200, "remaining": 100}}
+            },
+            period_usage=None,
+            aggregated={
+                "aggregations": [
+                    {"modelIntent": "auto-smart", "totalCents": 0, "inputTokens": 0, "outputTokens": 0}
+                ],
+            },
+            filtered={
+                "usageEvents": [
+                    {
+                        "model": "Cursor Grok 4.5 (Auto Balanced)",
+                        "chargedCents": 50,
+                        "tokenUsage": {},
+                    },
+                ]
+            },
+            plan_info=None,
+        )
+        auto = snap.models[0]
+        self.assertTrue(auto.is_auto)
+        self.assertEqual(auto.total_cents, 0)
+        self.assertEqual(auto.children, ())
+
+    def test_many_child_rounding_no_negatives_and_sums_to_total(self):
+        children = [
+            ModelSpend(
+                label=f"Model {i}",
+                model_intent=f"m{i}",
+                total_cents=1,
+                input_tokens=0,
+                output_tokens=0,
+                request_count=1,
+                is_auto=False,
+                children=(),
+            )
+            for i in range(6)
+        ]
+        scaled = scale_auto_children(4, children)
+        self.assertEqual(len(scaled), 6)
+        self.assertEqual(sum(c.total_cents for c in scaled), 4)
+        for child in scaled:
+            self.assertGreaterEqual(child.total_cents, 0)
+
     def test_filtered_auto_events_become_children(self):
         snap = merge_snapshot(
             session=_session(),
