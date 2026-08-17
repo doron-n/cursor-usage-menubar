@@ -29,6 +29,8 @@ def jwt_sub(access_token: str) -> str | None:
         data = json.loads(base64.urlsafe_b64decode(payload + pad))
     except (ValueError, json.JSONDecodeError):
         return None
+    if not isinstance(data, dict):
+        return None
     sub = data.get("sub")
     return str(sub) if sub else None
 
@@ -69,10 +71,11 @@ def read_session(db_path: Path | None = None) -> Session | None:
     if raw_team:
         try:
             team = json.loads(raw_team)
-            team_id = team.get("teamId") or team.get("id")
-            if team_id is not None:
-                team_id = int(team_id)
-            team_name = team.get("name")
+            if isinstance(team, dict):
+                team_id = team.get("teamId") or team.get("id")
+                if team_id is not None:
+                    team_id = int(team_id)
+                team_name = team.get("name")
         except (TypeError, ValueError, json.JSONDecodeError):
             pass
 

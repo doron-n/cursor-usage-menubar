@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from cursor_usage_menubar.auth import jwt_sub, read_session, session_cookie
+from cursor_usage_menubar.auth import _KEYS, jwt_sub, read_session, session_cookie
 from cursor_usage_menubar.models import Session
 
 
@@ -18,6 +18,14 @@ def _jwt(sub: str) -> str:
         base64.urlsafe_b64encode(json.dumps({"sub": sub}).encode())
         .rstrip(b"=")
         .decode()
+    )
+    return f"{header}.{payload}.sig"
+
+
+def _jwt_payload(payload_json: str) -> str:
+    header = base64.urlsafe_b64encode(b'{"alg":"none"}').rstrip(b"=").decode()
+    payload = (
+        base64.urlsafe_b64encode(payload_json.encode()).rstrip(b"=").decode()
     )
     return f"{header}.{payload}.sig"
 
@@ -48,6 +56,10 @@ class AuthTest(unittest.TestCase):
     def test_jwt_sub(self):
         self.assertEqual(jwt_sub(_jwt("user_99")), "user_99")
         self.assertIsNone(jwt_sub("not-a-jwt"))
+
+    def test_jwt_sub_rejects_non_object_payload(self):
+        self.assertIsNone(jwt_sub(_jwt_payload('["not","dict"]')))
+        self.assertIsNone(jwt_sub(_jwt_payload('"string-sub"')))
 
     def test_read_session_from_sqlite(self):
         token = _jwt("auth0|abc")
@@ -82,8 +94,29 @@ class AuthTest(unittest.TestCase):
     def test_session_dataclass_has_no_refresh_field(self):
         self.assertNotIn("refresh_token", Session.__dataclass_fields__)
 
+    def test_read_session_survives_non_object_team_json(self):
+        token = _jwt("auth0|abc")
+        path = _write_db(
+            {
+                "cursorAuth/accessToken": token,
+                "cursorAuth/cachedTeam": json.dumps(["not", "a", "dict"]),
+            }
+        )
+        try:
+            sess = read_session(path)
+            self.assertIsNotNone(sess)
+            assert sess is not None
+            self.assertIsNone(sess.team_id)
+            self.assertIsNone(sess.team_name)
+        finally:
+            path.unlink(missing_ok=True)
+
     def test_read_session_sql_ignores_refresh_token(self):
+        for key in _KEYS:
+            self.assertNotIn("refreshToken", key)
+            self.assertNotIn("refresh_token", key)
         source = inspect.getsource(read_session)
+        self.assertIn("_KEYS", source)
         self.assertNotIn("refreshToken", source)
         self.assertNotIn("refresh_token", source)
 
