@@ -3,6 +3,7 @@ from __future__ import annotations
 from cursor_usage_menubar.client import fetch_usage
 from cursor_usage_menubar.formatters import dollars
 from cursor_usage_menubar.models import UsageSnapshot
+from cursor_usage_menubar.prefs import load_prefs
 
 
 def redact(email: str | None) -> str:
@@ -17,6 +18,7 @@ def render(snapshot: UsageSnapshot) -> str:
         f"account: {redact(snapshot.email)}",
         f"team: {snapshot.team_name or '—'}",
         f"plan: {snapshot.plan_name}",
+        f"view: {snapshot.view_label()}",
         f"spent: {dollars(snapshot.spent_cents) if snapshot.spent_cents is not None else '—'}",
         f"limit: {dollars(snapshot.limit_cents) if snapshot.limit_cents is not None else '—'}",
         f"percent: {snapshot.percent if snapshot.percent is not None else '—'}",
@@ -32,7 +34,8 @@ def render(snapshot: UsageSnapshot) -> str:
 
 
 def main() -> None:
-    print(render(fetch_usage()))
+    prefs = load_prefs()
+    print(render(fetch_usage(scope=prefs["scope"], group_id=prefs.get("group_id"))))
 
 
 if __name__ == "__main__":

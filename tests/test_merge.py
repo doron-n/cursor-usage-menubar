@@ -310,6 +310,58 @@ class MergeTest(unittest.TestCase):
         labels = sorted(c.label for c in auto.children)
         self.assertEqual(labels, ["GPT-5.6 Sol", "Grok 4.5"])
 
+    def test_group_scope_uses_aggregated_spend_against_team_limit(self):
+        snap = merge_snapshot(
+            session=_session(),
+            usage_summary={
+                "individualUsage": {
+                    "overall": {"used": 40000, "limit": 50000, "remaining": 10000}
+                }
+            },
+            period_usage=None,
+            aggregated={
+                "totalCostCents": 1200,
+                "aggregations": [
+                    {"modelIntent": "grok", "totalCents": 1200, "inputTokens": 1, "outputTokens": 1}
+                ],
+            },
+            filtered={"usageEvents": []},
+            plan_info={"planName": "Enterprise"},
+            group_id=9485,
+            group_label="Platform",
+            scope="group",
+            spend_override=1200,
+        )
+        self.assertEqual(snap.spent_cents, 1200)
+        self.assertEqual(snap.limit_cents, 50000)
+        self.assertEqual(snap.remaining_cents, 48800)
+        self.assertEqual(snap.percent, 2)
+        self.assertEqual(snap.group_id, 9485)
+        self.assertEqual(snap.view_label(), "Platform (9485)")
+
+    def test_self_scope_uses_aggregated_spend_against_team_limit(self):
+        snap = merge_snapshot(
+            session=_session(),
+            usage_summary={
+                "individualUsage": {
+                    "overall": {"used": 40000, "limit": 50000, "remaining": 10000}
+                }
+            },
+            period_usage=None,
+            aggregated={
+                "totalCostCents": 450,
+                "aggregations": [
+                    {"modelIntent": "grok", "totalCents": 450, "inputTokens": 1, "outputTokens": 1}
+                ],
+            },
+            filtered={"usageEvents": []},
+            plan_info={"planName": "Enterprise"},
+            scope="self",
+        )
+        self.assertEqual(snap.spent_cents, 450)
+        self.assertEqual(snap.limit_cents, 50000)
+        self.assertEqual(snap.view_label(), "Myself only")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -193,7 +193,8 @@ class BreakdownController(NSObject):
         cycle = "—"
         if snap.cycle_start or snap.cycle_end:
             cycle = f"{snap.cycle_start or '?'} → {snap.cycle_end or '?'}"
-        self._label(doc, cycle, PAD, y + 32, 400, 18, size=12, secondary=True)
+        subtitle = f"{snap.view_label()} · {cycle}"
+        self._label(doc, subtitle, PAD, y + 32, 520, 18, size=12, secondary=True)
         return y + HEADER_H
 
     @python_method
@@ -228,7 +229,17 @@ class BreakdownController(NSObject):
 
     @python_method
     def _models(self, doc, snap, y):
-        self._label(doc, "BY MODEL", PAD, y, 200, 18, size=11, bold=True, secondary=True)
+        self._label(
+            doc,
+            "BY MODEL",
+            PAD,
+            y,
+            200,
+            18,
+            size=11,
+            bold=True,
+            secondary=True,
+        )
         y += 28
         total = snap.spent_cents or sum(m.total_cents for m in snap.models) or 1
         for model in snap.models:
@@ -320,3 +331,17 @@ class BreakdownController(NSObject):
 
 def show_breakdown(snapshot: UsageSnapshot) -> None:
     BreakdownController.shared().show_(snapshot)
+
+
+def refresh_if_visible(snapshot: UsageSnapshot) -> None:
+    ctrl = BreakdownController._instance
+    if ctrl is None or ctrl.window is None:
+        return
+    try:
+        visible = bool(ctrl.window.isVisible())
+    except Exception:
+        return
+    if not visible:
+        return
+    ctrl.snapshot = snapshot
+    ctrl.render()

@@ -1,0 +1,21 @@
+#!/bin/bash
+set -euo pipefail
+
+APP="/Applications/Cursor Usage.app"
+if [[ ! -d "$APP" ]]; then
+  exit 0
+fi
+
+logged_in="$(stat -f%Su /dev/console 2>/dev/null || true)"
+if [[ -n "${logged_in}" && "${logged_in}" != "root" ]]; then
+  uid="$(id -u "${logged_in}" 2>/dev/null || true)"
+  if [[ -n "${uid}" ]]; then
+    launchctl asuser "${uid}" open -a "Cursor Usage" || true
+  else
+    open -a "Cursor Usage" || true
+  fi
+else
+  open -a "Cursor Usage" || true
+fi
+
+exit 0

@@ -30,12 +30,16 @@ chmod +x install.sh
 
 After `./install.sh install`, the LaunchAgent's `KeepAlive` means clicking Quit will relaunch the app; run `./install.sh uninstall` if you actually want it to stop.
 
-Menu title looks like `Cursor · $237.34 · 48%`. Click it for account/plan/spend/allowance/remaining/cycle/top model, then:
+Menu title looks like `Cursor · $237.34 · 48%`. Click it for account/plan/view/spend/allowance/remaining/cycle/top model, then:
 
-- View Model Breakdown… (native window, Auto accordion)
+- View (Myself only / billing groups / Enter Group ID…)
+- View Users by Usage… (native window, when a group is selected)
+- View Model Breakdown… (native window, Auto accordion; group-wide models)
 - Refresh Now
 - Open Cursor Dashboard
 - Quit
+
+**Myself only** uses your billing-group member spend and per-user cap. A billing group (for example `9484` / xDome-R&D) uses Cursor's group spend for this cycle.
 
 ## Verify
 
@@ -44,6 +48,26 @@ Menu title looks like `Cursor · $237.34 · 48%`. Click it for account/plan/spen
 ```
 
 Prints a redacted snapshot (email domain, plan, spend, model names). No tokens.
+
+## Share with others (`.pkg`)
+
+Build a standalone Apple Silicon installer (no Python install required on their Mac):
+
+```bash
+./build-pkg.sh
+```
+
+The package is written to:
+
+`dist/CursorUsage-1.0.0-arm64.pkg`
+
+Recipients:
+
+1. Must be on Apple Silicon and already signed in to the Cursor desktop app.
+2. Double-click the pkg (or right-click → Open if macOS blocks it). It installs **Cursor Usage.app** into `/Applications`.
+3. The pkg is ad-hoc signed, not Apple-notarized. If Gatekeeper blocks it: `xattr -dr com.apple.quarantine CursorUsage-1.0.0-arm64.pkg`.
+
+Rebuild after code changes with `./build-pkg.sh`.
 
 ## License
 

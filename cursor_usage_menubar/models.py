@@ -26,6 +26,24 @@ class ModelSpend:
 
 
 @dataclass(frozen=True)
+class GroupMember:
+    user_id: int
+    email: str | None = None
+    name: str | None = None
+    spend_cents: int = 0
+    limit_cents: int | None = None
+
+
+@dataclass(frozen=True)
+class BillingGroup:
+    id: int
+    name: str | None = None
+    spend_cents: int | None = None
+    limit_cents: int | None = None
+    members: tuple[GroupMember, ...] = ()
+
+
+@dataclass(frozen=True)
 class UsageSnapshot:
     email: str | None
     team_name: str | None
@@ -39,6 +57,35 @@ class UsageSnapshot:
     models: tuple[ModelSpend, ...]
     status: str | None
     top_model: ModelSpend | None
+    scope: str = "team"
+    group_id: int | None = None
+    group_label: str | None = None
+    groups: tuple[BillingGroup, ...] = ()
+    breakdown_kind: str = "models"
+
+    def selected_members(self) -> tuple[GroupMember, ...]:
+        if self.scope != "group" or self.group_id is None:
+            return ()
+        for group in self.groups:
+            if group.id == self.group_id:
+                return group.members
+        return ()
+
+    def view_label(self) -> str:
+        if self.scope == "self":
+            return "Myself only"
+        if self.scope == "group" or self.group_id is not None:
+            label = self.group_label or (
+                str(self.group_id) if self.group_id is not None else "Group"
+            )
+            if (
+                self.group_label
+                and self.group_id is not None
+                and self.group_label != str(self.group_id)
+            ):
+                return f"{self.group_label} ({self.group_id})"
+            return label
+        return "Team (all)"
 
     @staticmethod
     def empty(status: str) -> "UsageSnapshot":

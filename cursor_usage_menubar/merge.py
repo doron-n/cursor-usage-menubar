@@ -88,6 +88,54 @@ def _tokens(block: object) -> tuple[int, int]:
     return inp, out
 
 
+def _event_list(filtered: dict) -> list:
+    raw = (
+        filtered.get("usageEvents")
+        or filtered.get("events")
+        or filtered.get("usageEventsDisplay")
+        or []
+    )
+    return raw if isinstance(raw, list) else []
+
+
+def aggregations_from_filtered(filtered: dict | None) -> dict | None:
+    """Build an aggregated payload from events so a user-scoped view can
+    still produce model rows when GetAggregatedUsageEvents stays team-wide."""
+    events = _event_list(filtered or {})
+    if not events:
+        return None
+    buckets: dict[str, dict[str, int]] = defaultdict(
+        lambda: {"cents": 0, "in": 0, "out": 0}
+    )
+    total = 0
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        model = str(event.get("model") or "")
+        if is_auto_event(model):
+            intent = "auto"
+        else:
+            intent = str(event.get("modelIntent") or model or "unknown")
+        cents = _as_int(event.get("chargedCents")) or 0
+        inp, out = _tokens(event.get("tokenUsage") or event)
+        buckets[intent]["cents"] += cents
+        buckets[intent]["in"] += inp
+        buckets[intent]["out"] += out
+        total += cents
+    return {
+        "totalCostCents": total,
+        "aggregations": [
+            {
+                "modelIntent": intent,
+                "totalCents": vals["cents"],
+                "inputTokens": vals["in"],
+                "outputTokens": vals["out"],
+            }
+            for intent, vals in buckets.items()
+        ],
+    }
+
+
 def merge_snapshot(
     session: Session | None,
     usage_summary: dict | None,
@@ -95,6 +143,13 @@ def merge_snapshot(
     aggregated: dict | None,
     filtered: dict | None,
     plan_info: dict | None,
+    group_id: int | None = None,
+    group_label: str | None = None,
+    groups: tuple = (),
+    scope: str = "team",
+    spend_override: int | None = None,
+    limit_override: int | None = None,
+    breakdown_kind: str = "models",
 ) -> UsageSnapshot:
     usage_summary = usage_summary or {}
     period_usage = period_usage or {}
@@ -117,6 +172,21 @@ def merge_snapshot(
         spent = _as_int(plan_usage.get("used"))
         limit = _as_int(plan_usage.get("limit"))
         remaining = _as_int(plan_usage.get("remaining"))
+    if spend_override is not None:
+        spent = spend_override
+        if limit_override is not None:
+            limit = limit_override
+        remaining = None if limit is None else (limit - spent)
+    elif scope == "self":
+        self_spent = _as_int(aggregated.get("totalCostCents"))
+        if self_spent is None:
+            self_spent = sum(
+                _as_int(row.get("totalCents")) or 0
+                for row in (aggregated.get("aggregations") or [])
+                if isinstance(row, dict)
+            )
+        spent = self_spent
+        remaining = None if limit is None else (limit - spent if spent is not None else None)
     if spent is None:
         spent = _as_int(aggregated.get("totalCostCents"))
         remaining = None if limit is None else (limit - spent if spent is not None else None)
@@ -146,12 +216,7 @@ def merge_snapshot(
     children_by_label: dict[str, dict[str, int]] = defaultdict(
         lambda: {"cents": 0, "in": 0, "out": 0, "n": 0}
     )
-    for event in (
-        filtered.get("usageEvents")
-        or filtered.get("events")
-        or filtered.get("usageEventsDisplay")
-        or []
-    ):
+    for event in _event_list(filtered):
         if not isinstance(event, dict):
             continue
         model_name = str(event.get("model") or "")
@@ -241,4 +306,9 @@ def merge_snapshot(
         models=tuple(models),
         status=None,
         top_model=top,
+        scope=scope if scope in ("team", "self", "group") else "team",
+        group_id=group_id,
+        group_label=group_label,
+        groups=tuple(groups) if groups else (),
+        breakdown_kind=breakdown_kind if breakdown_kind in ("models", "members") else "models",
     )
