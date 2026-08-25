@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cursor Usage — Download</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #121214;
+      --card: #1c1c1e;
+      --text: #f5f5f7;
+      --muted: #a1a1a6;
+      --accent: #30d158;
+      --btn: #0a84ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 16px;
+    }
+    main {
+      width: min(560px, 100%);
+    }
+    h1 {
+      font-size: 32px;
+      margin: 0 0 8px;
+    }
+    .lede {
+      color: var(--muted);
+      line-height: 1.5;
+      margin: 0 0 28px;
+    }
+    .card {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 24px;
+    }
+    .version {
+      color: var(--muted);
+      font-size: 13px;
+      margin: 0 0 16px;
+    }
+    .download {
+      display: inline-block;
+      background: var(--btn);
+      color: white;
+      text-decoration: none;
+      font-weight: 600;
+      padding: 12px 18px;
+      border-radius: 10px;
+    }
+    .download:hover { filter: brightness(1.08); }
+    ol {
+      margin: 20px 0 0;
+      padding-left: 20px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+    .warn {
+      margin-top: 20px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    a.inline { color: #64d2ff; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Cursor Usage</h1>
+    <p class="lede">
+      macOS menu bar app for your signed-in Cursor plan spend.
+      Apple Silicon only.
+    </p>
+    <div class="card">
+      <p class="version" id="version">Loading latest version…</p>
+      <a class="download" id="download" href="https://github.com/doron-n/cursor-usage-menubar/releases/latest">
+        Download installer
+      </a>
+      <ol>
+        <li>Already signed in to the Cursor desktop app on this Mac.</li>
+        <li>Double-click the <code>.pkg</code>. If macOS blocks it, right-click → Open.</li>
+        <li>It installs <strong>Cursor Usage</strong> in Applications and opens it.</li>
+      </ol>
+      <p class="warn">
+        Unofficial Cursor APIs — they can change or break without notice.
+        The installer is ad-hoc signed, not notarized by Apple.
+        Source and releases:
+        <a class="inline" href="https://github.com/doron-n/cursor-usage-menubar">github.com/doron-n/cursor-usage-menubar</a>
+      </p>
+    </div>
+  </main>
+  <script>
+    const repo = "doron-n/cursor-usage-menubar";
+    fetch("https://api.github.com/repos/" + repo + "/releases/latest")
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+      .then(function (rel) {
+        const versioned = (rel.assets || []).find(function (a) {
+          return /CursorUsage-\d+\.\d+\.\d+-arm64\.pkg$/.test(a.name);
+        });
+        const stable = (rel.assets || []).find(function (a) {
+          return a.name === "CursorUsage-arm64.pkg";
+        });
+        const asset = versioned || stable;
+        document.getElementById("version").textContent =
+          "Latest: " + (rel.tag_name || "release") + " · Apple Silicon";
+        if (asset) document.getElementById("download").href = asset.browser_download_url;
+      })
+      .catch(function () {
+        document.getElementById("version").textContent =
+          "Open GitHub Releases if the latest build is not listed yet.";
+      });
+  </script>
+</body>
+</html>

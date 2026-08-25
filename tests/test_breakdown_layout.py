@@ -29,6 +29,28 @@ class BreakdownLayoutTest(unittest.TestCase):
         snap = _snap()
         self.assertGreater(layout_height(snap, True), layout_height(snap, False))
 
+    def test_forecast_summary_is_taller_for_third_party(self):
+        from cursor_usage_menubar.breakdown import BASE_SUMMARY_H, summary_height
+
+        claude = ModelSpend(
+            "Claude 4.6 Sonnet", "claude-4.6-sonnet", 1800, 1_000_000, 200_000, 10, False
+        )
+        mix = UsageSnapshot(
+            email="a@b.c",
+            team_name="Acme",
+            plan_name="Enterprise",
+            spent_cents=1800,
+            limit_cents=10000,
+            remaining_cents=8200,
+            percent=18,
+            cycle_start=None,
+            cycle_end=None,
+            models=(claude,),
+            status=None,
+            top_model=claude,
+        )
+        self.assertGreater(summary_height(mix), BASE_SUMMARY_H)
+
     def test_no_webkit(self):
         import cursor_usage_menubar.breakdown as mod
 

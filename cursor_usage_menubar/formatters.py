@@ -18,6 +18,16 @@ def percent_used(used: int, limit: int) -> int | None:
     return int((used / limit) * 100)
 
 
+def actual_usage_caption(percent: int | None, users_count: int | None = None) -> str:
+    parts = ["This month"]
+    if percent is not None:
+        parts.append(f"{percent}% of monthly budget")
+    if users_count is not None:
+        noun = "user" if users_count == 1 else "users"
+        parts.append(f"{users_count} {noun}")
+    return " · ".join(parts)
+
+
 def menu_title(spent_cents: int | None, percent: int | None) -> str:
     if percent is None:
         return "—"

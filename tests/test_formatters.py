@@ -1,6 +1,7 @@
 import unittest
 
 from cursor_usage_menubar.formatters import (
+    actual_usage_caption,
     child_label,
     dock_badge,
     dollars,
@@ -20,6 +21,14 @@ class FormattersTest(unittest.TestCase):
         self.assertEqual(percent_used(23734, 50000), 47)
         self.assertIsNone(percent_used(100, 0))
         self.assertIsNone(percent_used(100, -1))
+
+    def test_actual_usage_caption(self):
+        self.assertEqual(
+            actual_usage_caption(55, 29),
+            "This month · 55% of monthly budget · 29 users",
+        )
+        self.assertEqual(actual_usage_caption(10, 1), "This month · 10% of monthly budget · 1 user")
+        self.assertEqual(actual_usage_caption(None), "This month")
 
     def test_menu_title_live_and_unknown(self):
         self.assertEqual(menu_title(23734, 48), "48%")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import webbrowser
 
 import rumps
@@ -8,6 +9,7 @@ from rumps import events
 
 from cursor_usage_menubar.breakdown import refresh_if_visible, show_breakdown
 from cursor_usage_menubar.client import fetch_usage, load_group_models
+from cursor_usage_menubar.cursor_pricing import cursor_model_forecast, forecast_menu_row
 from cursor_usage_menubar.formatters import dock_badge, dollars, menu_title
 from cursor_usage_menubar.models import UsageSnapshot
 from cursor_usage_menubar.prefs import load_prefs, save_prefs
@@ -26,6 +28,28 @@ def _safe_fetch_usage() -> UsageSnapshot:
         return fetch_usage(scope=prefs["scope"], group_id=prefs.get("group_id"))
     except Exception:
         return UsageSnapshot.empty(_FETCH_ERROR_STATUS)
+
+
+def snapshot_with_models(snapshot: UsageSnapshot) -> UsageSnapshot:
+    """Group spend snapshots omit models until this extra fetch runs."""
+    if snapshot.scope == "group" and snapshot.group_id is not None:
+        try:
+            return load_group_models(snapshot)
+        except Exception:
+            return snapshot
+    return snapshot
+
+
+def keep_loaded_models(
+    snapshot: UsageSnapshot, previous: UsageSnapshot | None
+) -> UsageSnapshot:
+    if snapshot.models or previous is None or not previous.models:
+        return snapshot
+    return replace(
+        snapshot,
+        models=previous.models,
+        top_model=snapshot.top_model or previous.top_model,
+    )
 
 
 def set_dock_badge(percent: int | None) -> None:
@@ -120,6 +144,11 @@ def info_rows(snapshot: UsageSnapshot) -> list[str]:
         f"Remaining: {remaining}",
         f"Cycle: {cycle}",
     ]
+    forecast = cursor_model_forecast(snapshot)
+    if forecast is not None:
+        row = forecast_menu_row(forecast)
+        if row:
+            rows.append(row)
     members = snapshot.selected_members()
     if members:
         top_user = max(members, key=lambda m: m.spend_cents)
@@ -244,6 +273,7 @@ class CursorUsageApp(rumps.App):
         self.menu.add(rumps.MenuItem("Quit", callback=self.quit_app))
 
     def _apply(self, snapshot: UsageSnapshot) -> None:
+        snapshot = keep_loaded_models(snapshot, self._snapshot)
         self._snapshot = snapshot
         self.title = menu_title(snapshot.spent_cents, snapshot.percent)
         set_dock_badge(snapshot.percent)
@@ -260,17 +290,13 @@ class CursorUsageApp(rumps.App):
         self._apply(_safe_fetch_usage())
 
     def view_users(self, _sender=None) -> None:
-        snap = self._snapshot or _safe_fetch_usage()
+        snap = snapshot_with_models(self._snapshot or _safe_fetch_usage())
         self._snapshot = snap
+        self._rebuild_info(snap)
         show_users(snap)
 
     def view_breakdown(self, _sender=None) -> None:
-        snap = self._snapshot or _safe_fetch_usage()
-        if snap.scope == "group" and snap.group_id is not None:
-            try:
-                snap = load_group_models(snap)
-            except Exception:
-                pass
+        snap = snapshot_with_models(self._snapshot or _safe_fetch_usage())
         self._snapshot = snap
         self._rebuild_info(snap)
         show_breakdown(snap)

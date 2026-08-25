@@ -22,11 +22,12 @@ from cursor_usage_menubar.breakdown import (
     HEADER_H,
     PAD,
     ROW_H,
-    SUMMARY_H,
     WINDOW_WIDTH,
     BarView,
     FlippedView,
     _color_for,
+    fill_summary_card,
+    summary_height,
 )
 from cursor_usage_menubar.formatters import dollars
 from cursor_usage_menubar.models import GroupMember, UsageSnapshot
@@ -34,7 +35,7 @@ from cursor_usage_menubar.models import GroupMember, UsageSnapshot
 
 def users_layout_height(snapshot: UsageSnapshot) -> int:
     members = snapshot.selected_members()
-    height = PAD + HEADER_H + SUMMARY_H + 36
+    height = PAD + HEADER_H + summary_height(snapshot, required=True) + 36
     height += ROW_H * max(1, len(members))
     return height + FOOTER_H + PAD
 
@@ -142,42 +143,24 @@ class UsersController(NSObject):
 
     @python_method
     def _summary(self, doc, snap, y):
+        card_h = summary_height(snap, required=True)
         card = FlippedView.alloc().initWithFrame_(
-            NSMakeRect(PAD, y, WINDOW_WIDTH - PAD * 2, SUMMARY_H - 16)
+            NSMakeRect(PAD, y, WINDOW_WIDTH - PAD * 2, card_h - 16)
         )
         card.setWantsLayer_(True)
         card.layer().setCornerRadius_(12)
         card.layer().setBackgroundColor_(
             NSColor.separatorColor().colorWithAlphaComponent_(0.18).CGColor()
         )
-        spent = dollars(snap.spent_cents) if snap.spent_cents is not None else "—"
-        n = len(snap.selected_members())
-        self._label(card, spent, 16, 12, 300, 36, size=28, bold=True)
-        self._label(
+        fill_summary_card(
+            self,
             card,
-            f"{n} users in this group",
-            16,
-            50,
-            400,
-            18,
-            size=12,
-            secondary=True,
+            snap,
+            users_count=len(snap.selected_members()),
+            required_forecast=True,
         )
-        fraction = 0.0
-        if snap.percent is not None:
-            fraction = min(1.0, snap.percent / 100.0)
-        if snap.percent is not None and snap.percent >= 90:
-            color = NSColor.systemRedColor()
-        elif snap.percent is not None and snap.percent >= 75:
-            color = NSColor.systemOrangeColor()
-        else:
-            color = NSColor.systemGreenColor()
-        bar = BarView.alloc().initWithFrame_fraction_color_(
-            NSMakeRect(16, 78, WINDOW_WIDTH - PAD * 2 - 48, 14), fraction, color
-        )
-        card.addSubview_(bar)
         doc.addSubview_(card)
-        return y + SUMMARY_H
+        return y + card_h
 
     @python_method
     def _users(self, doc, snap, y):

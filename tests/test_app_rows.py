@@ -1,7 +1,13 @@
 import unittest
 from unittest.mock import patch
 
-from cursor_usage_menubar.app import _safe_fetch_usage, info_rows, user_usage_rows
+from cursor_usage_menubar.app import (
+    _safe_fetch_usage,
+    info_rows,
+    keep_loaded_models,
+    snapshot_with_models,
+    user_usage_rows,
+)
 from cursor_usage_menubar.models import BillingGroup, GroupMember, ModelSpend, UsageSnapshot
 
 
@@ -102,6 +108,101 @@ class InfoRowsTest(unittest.TestCase):
         snap = UsageSnapshot.empty("Open Cursor to refresh your session")
         rows = info_rows(snap)
         self.assertEqual(rows[0], "Open Cursor to refresh your session")
+
+    def test_cursor_model_forecast_row_when_third_party_tokens(self):
+        snap = UsageSnapshot(
+            email="ada@example.com",
+            team_name="Acme",
+            plan_name="Enterprise",
+            spent_cents=2300,
+            limit_cents=10000,
+            remaining_cents=7700,
+            percent=23,
+            cycle_start=None,
+            cycle_end=None,
+            models=(
+                ModelSpend("Cursor Grok 4.5", "grok-4.5", 500, 100_000, 10_000, 5, False),
+                ModelSpend(
+                    "Claude 4.6 Sonnet",
+                    "claude-4.6-sonnet",
+                    1800,
+                    1_000_000,
+                    200_000,
+                    10,
+                    False,
+                ),
+            ),
+            status=None,
+            top_model=None,
+        )
+        rows = info_rows(snap)
+        self.assertTrue(
+            any(
+                r == "If only Cursor models: $6.00 · 6% of budget (would save $17.00)"
+                for r in rows
+            )
+        )
+
+    def test_snapshot_with_models_loads_group_models(self):
+        base = UsageSnapshot(
+            email="ada@example.com",
+            team_name="Acme",
+            plan_name="Enterprise",
+            spent_cents=300,
+            limit_cents=1000,
+            remaining_cents=700,
+            percent=30,
+            cycle_start=None,
+            cycle_end=None,
+            models=(),
+            status=None,
+            top_model=None,
+            scope="group",
+            group_id=9484,
+        )
+        loaded = base
+        with patch("cursor_usage_menubar.app.load_group_models", return_value=loaded) as mocked:
+            out = snapshot_with_models(base)
+        mocked.assert_called_once_with(base)
+        self.assertIs(out, loaded)
+
+    def test_keep_loaded_models_survives_poll_without_models(self):
+        models = (ModelSpend("Claude 4.6 Sonnet", "claude", 1800, 1_000_000, 200_000, 1, False),)
+        previous = UsageSnapshot(
+            email="a@b.c",
+            team_name="Acme",
+            plan_name="Enterprise",
+            spent_cents=1800,
+            limit_cents=10000,
+            remaining_cents=8200,
+            percent=18,
+            cycle_start=None,
+            cycle_end=None,
+            models=models,
+            status=None,
+            top_model=models[0],
+            scope="group",
+            group_id=1,
+        )
+        polled = UsageSnapshot(
+            email="a@b.c",
+            team_name="Acme",
+            plan_name="Enterprise",
+            spent_cents=1900,
+            limit_cents=10000,
+            remaining_cents=8100,
+            percent=19,
+            cycle_start=None,
+            cycle_end=None,
+            models=(),
+            status=None,
+            top_model=None,
+            scope="group",
+            group_id=1,
+        )
+        kept = keep_loaded_models(polled, previous)
+        self.assertEqual(kept.models, models)
+        self.assertEqual(kept.spent_cents, 1900)
 
     def test_safe_fetch_usage_degrades_instead_of_raising(self):
         with patch(

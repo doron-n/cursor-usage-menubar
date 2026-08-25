@@ -18,6 +18,12 @@ The app reads Cursor's local SQLite state DB **read-only**:
 
 It never writes that DB, never saves access/refresh tokens to disk or Keychain, never logs cookies, and never calls Cursor's OAuth refresh endpoint (refreshing here could break your Cursor login). If the session is expired, open Cursor so it can refresh itself.
 
+## Download
+
+**[Download the latest installer](https://doron-n.github.io/cursor-usage-menubar/)**
+
+The page always points at the newest GitHub Release. Recipients need Apple Silicon and a signed-in Cursor desktop app.
+
 ## Install (local only)
 
 ```bash
@@ -51,23 +57,23 @@ Prints a redacted snapshot (email domain, plan, spend, model names). No tokens.
 
 ## Share with others (`.pkg`)
 
-Build a standalone Apple Silicon installer (no Python install required on their Mac):
+Every `./build-pkg.sh` **bumps the patch version** (1.0.0 → 1.0.1), writes `VERSION`, and copies the installer to your Desktop. Use `PKG_BUMP=minor` or `PKG_BUMP=major` when you want a larger bump. `PKG_SKIP_BUMP=1` rebuilds the current version.
 
 ```bash
 ./build-pkg.sh
+# publish to GitHub Releases (updates the download page):
+PKG_PUBLISH=1 ./build-pkg.sh
 ```
 
-The package is written to:
+The versioned package is:
 
-`dist/CursorUsage-1.0.0-arm64.pkg`
+`dist/CursorUsage-<version>-arm64.pkg`
 
 Recipients:
 
 1. Must be on Apple Silicon and already signed in to the Cursor desktop app.
 2. Double-click the pkg (or right-click → Open if macOS blocks it). It installs **Cursor Usage.app** into `/Applications`.
-3. The pkg is ad-hoc signed, not Apple-notarized. If Gatekeeper blocks it: `xattr -dr com.apple.quarantine CursorUsage-1.0.0-arm64.pkg`.
-
-Rebuild after code changes with `./build-pkg.sh`.
+3. The pkg is ad-hoc signed, not Apple-notarized. If Gatekeeper blocks it: `xattr -dr com.apple.quarantine CursorUsage-*-arm64.pkg`.
 
 ## License
 

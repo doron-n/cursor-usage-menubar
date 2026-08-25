@@ -50,6 +50,7 @@ coll = COLLECT(
     upx=False,
     name="Cursor Usage",
 )
+app_version = os.environ.get("CURSOR_USAGE_VERSION", "1.0.0")
 app = BUNDLE(
     coll,
     name="Cursor Usage.app",
@@ -58,8 +59,8 @@ app = BUNDLE(
     info_plist={
         "CFBundleName": "Cursor Usage",
         "CFBundleDisplayName": "Cursor Usage",
-        "CFBundleShortVersionString": "1.0.0",
-        "CFBundleVersion": "1.0.0",
+        "CFBundleShortVersionString": app_version,
+        "CFBundleVersion": app_version,
         "NSHighResolutionCapable": True,
         "NSAppleEventsUsageDescription": "Opens the Cursor dashboard in your browser.",
     },

@@ -22,12 +22,18 @@ from Foundation import NSObject
 from objc import python_method
 from objc import super as objc_super
 
-from cursor_usage_menubar.formatters import dollars
+from cursor_usage_menubar.cursor_pricing import (
+    cursor_model_forecast,
+    forecast_card_captions,
+)
+from cursor_usage_menubar.formatters import actual_usage_caption, dollars
 from cursor_usage_menubar.models import ModelSpend, UsageSnapshot
 
 WINDOW_WIDTH = 580
 HEADER_H = 64
-SUMMARY_H = 118
+BASE_SUMMARY_H = 118
+FORECAST_SUMMARY_EXTRA = 78
+SUMMARY_H = BASE_SUMMARY_H
 ROW_H = 72
 CHILD_H = 58
 FOOTER_H = 48
@@ -50,8 +56,80 @@ _PALETTE = (
 )
 
 
+def summary_height(snapshot: UsageSnapshot, required: bool = False) -> int:
+    if required or cursor_model_forecast(snapshot) is not None:
+        return BASE_SUMMARY_H + FORECAST_SUMMARY_EXTRA
+    return BASE_SUMMARY_H
+
+
+def usage_bar_color(percent: int | None):
+    if percent is not None and percent >= 90:
+        return NSColor.systemRedColor()
+    if percent is not None and percent >= 75:
+        return NSColor.systemOrangeColor()
+    return NSColor.systemGreenColor()
+
+
+def add_forecast_section(host, card, snapshot: UsageSnapshot, required: bool = False) -> None:
+    forecast = cursor_model_forecast(snapshot)
+    if forecast is None and not required:
+        return
+    if forecast is None:
+        title = "If you'd used only Cursor models · —"
+        sub = "Not enough token data to estimate"
+        fraction = 0.0
+    else:
+        title, sub = forecast_card_captions(forecast)
+        fraction = 0.0
+        if forecast.percent is not None:
+            fraction = min(1.0, forecast.percent / 100.0)
+    host._label(card, title, 16, 98, 508, 18, size=12, secondary=True)
+    bar = BarView.alloc().initWithFrame_fraction_color_(
+        NSMakeRect(16, 118, WINDOW_WIDTH - PAD * 2 - 48, 14),
+        fraction,
+        NSColor.systemTealColor(),
+    )
+    card.addSubview_(bar)
+    host._label(card, sub, 16, 140, 508, 16, size=11, secondary=True)
+
+
+def fill_summary_card(
+    host,
+    card,
+    snapshot: UsageSnapshot,
+    *,
+    users_count: int | None = None,
+    required_forecast: bool = False,
+) -> None:
+    spent = dollars(snapshot.spent_cents) if snapshot.spent_cents is not None else "—"
+    budget = dollars(snapshot.limit_cents) if snapshot.limit_cents else "—"
+    host._label(card, spent, 16, 12, 300, 36, size=28, bold=True)
+    host._label(card, "Monthly budget", 330, 14, 178, 16, size=11, secondary=True)
+    host._label(card, budget, 330, 32, 178, 22, size=16, bold=True)
+    host._label(
+        card,
+        actual_usage_caption(snapshot.percent, users_count),
+        16,
+        52,
+        508,
+        18,
+        size=12,
+        secondary=True,
+    )
+    fraction = 0.0
+    if snapshot.percent is not None:
+        fraction = min(1.0, snapshot.percent / 100.0)
+    bar = BarView.alloc().initWithFrame_fraction_color_(
+        NSMakeRect(16, 74, WINDOW_WIDTH - PAD * 2 - 48, 14),
+        fraction,
+        usage_bar_color(snapshot.percent),
+    )
+    card.addSubview_(bar)
+    add_forecast_section(host, card, snapshot, required=required_forecast)
+
+
 def layout_height(snapshot: UsageSnapshot, auto_expanded: bool) -> int:
-    height = PAD + HEADER_H + SUMMARY_H + 36
+    height = PAD + HEADER_H + summary_height(snapshot) + 36
     for model in snapshot.models:
         height += ROW_H
         if model.is_auto and auto_expanded:
@@ -199,33 +277,18 @@ class BreakdownController(NSObject):
 
     @python_method
     def _summary(self, doc, snap, y):
+        card_h = summary_height(snap)
         card = FlippedView.alloc().initWithFrame_(
-            NSMakeRect(PAD, y, WINDOW_WIDTH - PAD * 2, SUMMARY_H - 16)
+            NSMakeRect(PAD, y, WINDOW_WIDTH - PAD * 2, card_h - 16)
         )
         card.setWantsLayer_(True)
         card.layer().setCornerRadius_(12)
         card.layer().setBackgroundColor_(
             NSColor.separatorColor().colorWithAlphaComponent_(0.18).CGColor()
         )
-        spent = dollars(snap.spent_cents) if snap.spent_cents is not None else "—"
-        pct_text = f"{snap.percent}%" if snap.percent is not None else "—"
-        self._label(card, spent, 16, 12, 300, 36, size=28, bold=True)
-        self._label(card, f"{pct_text} of limit", 16, 50, 300, 18, size=12, secondary=True)
-        fraction = 0.0
-        if snap.percent is not None:
-            fraction = min(1.0, snap.percent / 100.0)
-        if snap.percent is not None and snap.percent >= 90:
-            color = NSColor.systemRedColor()
-        elif snap.percent is not None and snap.percent >= 75:
-            color = NSColor.systemOrangeColor()
-        else:
-            color = NSColor.systemGreenColor()
-        bar = BarView.alloc().initWithFrame_fraction_color_(
-            NSMakeRect(16, 78, WINDOW_WIDTH - PAD * 2 - 48, 14), fraction, color
-        )
-        card.addSubview_(bar)
+        fill_summary_card(self, card, snap)
         doc.addSubview_(card)
-        return y + SUMMARY_H
+        return y + card_h
 
     @python_method
     def _models(self, doc, snap, y):
