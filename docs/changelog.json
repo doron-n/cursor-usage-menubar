@@ -1,0 +1,32 @@
+{
+  "releases": [
+    {
+      "version": "1.0.3",
+      "title": "Global budget and model filters",
+      "highlights": [
+        "View → Global shows the enterprise-wide budget from Cursor’s usage summary.",
+        "Model Breakdown can filter All models, Cursor models, or Other models.",
+        "Cursor models are Grok 4.5 / 4.6 and Composer. Auto keeps only the children that match.",
+        "Filtered spend and percent still use the same budget number.",
+        "Leaving Enter Group ID empty now opens Global."
+      ]
+    },
+    {
+      "version": "1.0.2",
+      "title": "Users by Usage sort, restored",
+      "highlights": [
+        "Users by Usage again has Usage / Name / Cap and Desc / Asc sort popups.",
+        "Each user’s percent is against their personal cap, not the group total."
+      ]
+    },
+    {
+      "version": "1.0.1",
+      "title": "Public download page",
+      "highlights": [
+        "First public installer on GitHub Releases.",
+        "Every package build now bumps the version automatically.",
+        "Download page at doron-n.github.io/cursor-usage-menubar."
+      ]
+    }
+  ]
+}

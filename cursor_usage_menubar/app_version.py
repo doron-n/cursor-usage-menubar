@@ -1,10 +1,42 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 VERSION_PATH = ROOT / "VERSION"
+CHANGELOG_PATH = ROOT / "docs" / "changelog.json"
+PAGES_URL = "https://doron-n.github.io/cursor-usage-menubar/"
+
+
+def notes_for(version: str, path: Path = CHANGELOG_PATH) -> str:
+    fallback = (
+        f"Cursor Usage {version} for Apple Silicon.\n\n"
+        f"Download and install notes: {PAGES_URL}\n"
+    )
+    if not path.exists():
+        return fallback
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return fallback
+    for rel in data.get("releases") or []:
+        if not isinstance(rel, dict) or rel.get("version") != version:
+            continue
+        title = str(rel.get("title") or "").strip()
+        highlights = [
+            str(item).strip()
+            for item in (rel.get("highlights") or [])
+            if str(item).strip()
+        ]
+        lines = [f"Cursor Usage {version} for Apple Silicon.", ""]
+        if title:
+            lines.extend([title, ""])
+        lines.extend(f"- {item}" for item in highlights)
+        lines.extend(["", f"Download and install notes: {PAGES_URL}"])
+        return "\n".join(lines)
+    return fallback
 
 
 def read_version(path: Path = VERSION_PATH) -> str:
@@ -38,10 +70,21 @@ def main() -> None:
         help="print the next version (does not write unless --write)",
     )
     parser.add_argument("--write", metavar="VERSION", help="write this version to VERSION")
+    parser.add_argument(
+        "--notes",
+        metavar="VERSION",
+        nargs="?",
+        const="current",
+        help="print GitHub release notes for VERSION (default: current VERSION file)",
+    )
     args = parser.parse_args()
     if args.write:
         write_version(args.write)
         print(args.write)
+        return
+    if args.notes:
+        version = read_version() if args.notes == "current" else args.notes
+        print(notes_for(version), end="")
         return
     if args.current:
         print(read_version())

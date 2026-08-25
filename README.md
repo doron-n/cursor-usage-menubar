@@ -22,7 +22,7 @@ It never writes that DB, never saves access/refresh tokens to disk or Keychain, 
 
 **[Download the latest installer](https://doron-n.github.io/cursor-usage-menubar/)**
 
-The page always points at the newest GitHub Release. Recipients need Apple Silicon and a signed-in Cursor desktop app.
+The page always points at the newest GitHub Release and lists what’s new in that version plus earlier ones. Recipients need Apple Silicon and a signed-in Cursor desktop app.
 
 ## Install (local only)
 

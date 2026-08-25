@@ -85,16 +85,7 @@ if [[ "${PKG_PUBLISH:-}" == "1" ]]; then
     echo "gh is required to publish a GitHub Release" >&2
     exit 1
   fi
-  notes="$(cat <<EOF
-Cursor Usage ${VERSION} for Apple Silicon.
-
-Download and install notes: ${PAGES_URL}
-
-- Already signed in to the Cursor desktop app
-- Right-click the pkg → Open if macOS blocks it
-- Unofficial Cursor APIs — they can change without notice
-EOF
-)"
+  notes="$("$PY" -m cursor_usage_menubar.app_version --notes "$VERSION")"
   if git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git remote get-url origin >/dev/null 2>&1; then
     git add VERSION
     if ! git diff --cached --quiet; then
