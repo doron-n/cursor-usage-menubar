@@ -2,6 +2,7 @@ import unittest
 
 from cursor_usage_menubar.formatters import (
     child_label,
+    dock_badge,
     dollars,
     is_auto_event,
     is_auto_intent,
@@ -21,10 +22,14 @@ class FormattersTest(unittest.TestCase):
         self.assertIsNone(percent_used(100, -1))
 
     def test_menu_title_live_and_unknown(self):
-        self.assertEqual(menu_title(23734, 48), "Cursor · $237.34 · 48%")
-        self.assertEqual(menu_title(None, None), "Cursor · —")
-        self.assertEqual(menu_title(100, None), "Cursor · —")
-        self.assertEqual(menu_title(None, 10), "Cursor · —")
+        self.assertEqual(menu_title(23734, 48), "48%")
+        self.assertEqual(menu_title(None, None), "—")
+        self.assertEqual(menu_title(100, None), "—")
+        self.assertEqual(menu_title(None, 10), "10%")
+
+    def test_dock_badge(self):
+        self.assertEqual(dock_badge(48), "48%")
+        self.assertEqual(dock_badge(None), "")
 
     def test_auto_event_matching(self):
         self.assertTrue(is_auto_event("Cursor Grok 4.5 (Auto Balanced)"))

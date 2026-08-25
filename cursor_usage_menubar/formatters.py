@@ -19,9 +19,15 @@ def percent_used(used: int, limit: int) -> int | None:
 
 
 def menu_title(spent_cents: int | None, percent: int | None) -> str:
-    if spent_cents is None or percent is None:
-        return "Cursor · —"
-    return f"Cursor · {dollars(spent_cents)} · {percent}%"
+    if percent is None:
+        return "—"
+    return f"{percent}%"
+
+
+def dock_badge(percent: int | None) -> str:
+    if percent is None:
+        return ""
+    return f"{percent}%"
 
 
 def is_auto_event(model_name: str) -> bool:
