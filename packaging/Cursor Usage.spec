@@ -56,7 +56,6 @@ app = BUNDLE(
     icon=None,
     bundle_identifier="com.cursor-usage.menubar",
     info_plist={
-        "LSUIElement": True,
         "CFBundleName": "Cursor Usage",
         "CFBundleDisplayName": "Cursor Usage",
         "CFBundleShortVersionString": "1.0.0",

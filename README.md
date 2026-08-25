@@ -30,7 +30,7 @@ chmod +x install.sh
 
 After `./install.sh install`, the LaunchAgent's `KeepAlive` means clicking Quit will relaunch the app; run `./install.sh uninstall` if you actually want it to stop.
 
-Menu title looks like `Cursor · $237.34 · 48%`. Click it for account/plan/view/spend/allowance/remaining/cycle/top model, then:
+Menu title looks like `18%` (or `—` if usage is unknown). The same percent appears as a Dock badge. Click the menu-bar title or the Dock icon for account/plan/view/spend/allowance/remaining/cycle/top model, then:
 
 - View (Myself only / billing groups / Enter Group ID…)
 - View Users by Usage… (native window, when a group is selected)
