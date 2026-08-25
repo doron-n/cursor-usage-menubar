@@ -1,0 +1,23 @@
+---
+description: Update the download web UI on every version
+alwaysApply: true
+---
+
+# Release web UI
+
+Every new version must update the download site. Do not publish a pkg whose What’s new still describes the previous release.
+
+## Required updates
+
+1. Add the **new version first** in `docs/changelog.json` (`version`, `title`, `highlights`).
+2. **Keep previous entries** in that file. Never replace the list with only the latest version.
+3. Mirror the same notes in `fallbackNotes` inside `docs/index.html`.
+4. If `tests/test_download_page.py` asserts the latest version string, point it at the new one.
+
+`changelog.json` is the source for GitHub release notes (`./build-pkg.sh` with `PKG_PUBLISH=1`) and for the What’s new section on https://doron-n.github.io/cursor-usage-menubar/
+
+## Do not
+
+- Ship `PKG_PUBLISH=1` before the changelog entry exists for that version.
+- Leave generic installer boilerplate as the only “what’s new”.
+- Drop older releases from the page or the JSON list.
