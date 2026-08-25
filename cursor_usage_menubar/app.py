@@ -3,11 +3,11 @@ from __future__ import annotations
 import webbrowser
 
 import rumps
-from AppKit import NSApplication, NSApplicationActivationPolicyAccessory
+from AppKit import NSApplication, NSApplicationActivationPolicyRegular
 
 from cursor_usage_menubar.breakdown import refresh_if_visible, show_breakdown
 from cursor_usage_menubar.client import fetch_usage, load_group_models
-from cursor_usage_menubar.formatters import dollars, menu_title
+from cursor_usage_menubar.formatters import dock_badge, dollars, menu_title
 from cursor_usage_menubar.models import UsageSnapshot
 from cursor_usage_menubar.prefs import load_prefs, save_prefs
 from cursor_usage_menubar.users import refresh_users_if_visible, show_users
@@ -25,6 +25,61 @@ def _safe_fetch_usage() -> UsageSnapshot:
         return fetch_usage(scope=prefs["scope"], group_id=prefs.get("group_id"))
     except Exception:
         return UsageSnapshot.empty(_FETCH_ERROR_STATUS)
+
+
+def set_dock_badge(percent: int | None) -> None:
+    try:
+        NSApplication.sharedApplication().dockTile().setBadgeLabel_(dock_badge(percent))
+    except Exception:
+        return
+
+
+def pin_status_item_title(nsapp, title: str) -> None:
+    item = getattr(nsapp, "nsstatusitem", None)
+    if item is None:
+        return
+    try:
+        item.setVisible_(True)
+    except Exception:
+        pass
+    try:
+        button = item.button()
+    except Exception:
+        return
+    if button is None:
+        return
+    try:
+        button.setTitle_(title)
+    except Exception:
+        return
+
+
+def handle_dock_reopen(nsapp) -> bool:
+    item = getattr(nsapp, "nsstatusitem", None)
+    if item is None:
+        return True
+    try:
+        button = item.button()
+    except Exception:
+        return True
+    if button is None:
+        return True
+    try:
+        button.performClick_(None)
+    except Exception:
+        pass
+    return True
+
+
+def install_dock_reopen() -> None:
+    from rumps.rumps import NSApp
+
+    def applicationShouldHandleReopen_hasVisibleWindows_(self, app, flag):
+        return handle_dock_reopen(self)
+
+    NSApp.applicationShouldHandleReopen_hasVisibleWindows_ = (
+        applicationShouldHandleReopen_hasVisibleWindows_
+    )
 
 
 def info_rows(snapshot: UsageSnapshot) -> list[str]:
@@ -99,7 +154,7 @@ def user_usage_rows(snapshot: UsageSnapshot) -> list[str]:
 
 class CursorUsageApp(rumps.App):
     def __init__(self) -> None:
-        super().__init__("Cursor · —", quit_button=None)
+        super().__init__("—", quit_button=None)
         self._snapshot: UsageSnapshot | None = None
         self._view_callbacks: list = []
 
@@ -185,6 +240,8 @@ class CursorUsageApp(rumps.App):
     def _apply(self, snapshot: UsageSnapshot) -> None:
         self._snapshot = snapshot
         self.title = menu_title(snapshot.spent_cents, snapshot.percent)
+        set_dock_badge(snapshot.percent)
+        pin_status_item_title(getattr(self, "_nsapp", None), self.title or "—")
         self._rebuild_info(snapshot)
         refresh_if_visible(snapshot)
         refresh_users_if_visible(snapshot)
@@ -219,8 +276,9 @@ class CursorUsageApp(rumps.App):
         rumps.quit_application()
 
     def run(self, **kwargs):
+        install_dock_reopen()
         NSApplication.sharedApplication().setActivationPolicy_(
-            NSApplicationActivationPolicyAccessory
+            NSApplicationActivationPolicyRegular
         )
         self.refresh_now()
         super().run(**kwargs)
