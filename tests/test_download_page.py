@@ -11,6 +11,7 @@ class DownloadPageTest(unittest.TestCase):
     def test_changelog_covers_current_and_previous(self):
         data = json.loads(CHANGELOG.read_text(encoding="utf-8"))
         versions = [rel["version"] for rel in data["releases"]]
+        self.assertEqual(versions[0], (ROOT / "VERSION").read_text(encoding="utf-8").strip())
         self.assertEqual(versions[0], "1.0.19")
         self.assertIn("1.0.9", versions)
         self.assertIn("1.0.8", versions)
@@ -27,6 +28,9 @@ class DownloadPageTest(unittest.TestCase):
 
     def test_page_has_notes_and_download(self):
         html = INDEX.read_text(encoding="utf-8")
+        self.assertIn('id="btn-ver">v1.0.19</small>', html)
+        self.assertIn("CursorUsage-1.0.19-arm64.pkg", html)
+        self.assertNotIn("/releases/latest", html)
         self.assertIn("What’s new", html)
         self.assertIn('id="latest"', html)
         self.assertIn('id="previous"', html)

@@ -476,12 +476,12 @@
           Percent in the bar. Global budget, groups, and model filters one click away.
         </p>
         <div class="cta">
-          <a class="btn" id="download" href="https://github.com/doron-n/cursor-usage-menubar/releases/latest">
-            Download installer <small id="btn-ver"></small>
+          <a class="btn" id="download" href="https://github.com/doron-n/cursor-usage-menubar/releases/download/v1.0.19/CursorUsage-1.0.19-arm64.pkg">
+            Download installer <small id="btn-ver">v1.0.19</small>
           </a>
           <div class="dl-meta">
             <div class="dl-count" id="downloads" hidden></div>
-            <div class="meta" id="version">Loading latest version…</div>
+            <div class="meta" id="version">Latest <strong>v1.0.19</strong> · Apple Silicon · ad-hoc signed</div>
           </div>
         </div>
         <ol class="install">
@@ -774,7 +774,7 @@
       }
     }
 
-    function renderDownloads(releases, latestRel) {
+    function renderDownloads(releases, latestRel, version) {
       const el = document.getElementById("downloads");
       if (!el) return;
       const hasAssets = (releases || []).some(function (rel) {
@@ -788,9 +788,9 @@
       const total = downloadTotal(releases);
       const latestAsset = latestRel ? assetFor(latestRel) : null;
       const latestCount = latestAsset ? (Number(latestAsset.download_count) || 0) : 0;
-      const latestVer = latestRel ? versionOf(latestRel.tag_name) : "";
+      const latestVer = version || (latestRel ? versionOf(latestRel.tag_name) : "");
       const label = total === 1 ? "download" : "downloads";
-      const extra = latestCount && latestVer
+      const extra = latestCount && latestVer && latestRel && versionOf(latestRel.tag_name) === latestVer
         ? " · " + formatCount(latestCount) + " for v" + latestVer
         : "";
       el.hidden = false;
@@ -846,14 +846,19 @@
         return;
       }
       const version = versions[0];
-      const latest = byVer[version] || usable[0] || {};
+      const latest = byVer[version] || {};
       const asset = assetFor(latest);
+      const pkgUrl =
+        "https://github.com/" + repo + "/releases/download/v" + version +
+        "/CursorUsage-" + version + "-arm64.pkg";
       const copy = notesFor(version, authored);
       document.getElementById("version").innerHTML =
         "Latest <strong>v" + escapeHtml(version) + "</strong> · Apple Silicon · ad-hoc signed";
       document.getElementById("btn-ver").textContent = "v" + version;
-      if (asset) document.getElementById("download").href = asset.browser_download_url;
-      renderDownloads(usable, latest);
+      document.getElementById("download").href = asset
+        ? asset.browser_download_url
+        : pkgUrl;
+      renderDownloads(usable, latest, version);
 
       const highlights = copy && copy.highlights && copy.highlights.length
         ? copy.highlights
