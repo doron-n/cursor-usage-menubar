@@ -5,7 +5,7 @@ from pathlib import Path
 
 PREFS_DIR = Path.home() / "Library/Application Support/cursor-usage-menubar"
 PREFS_PATH = PREFS_DIR / "prefs.json"
-SCOPES = ("self", "group")
+SCOPES = ("self", "group", "team")
 
 
 def load_prefs(path: Path | None = None) -> dict:

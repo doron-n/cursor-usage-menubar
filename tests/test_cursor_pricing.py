@@ -1,8 +1,10 @@
 import unittest
 
 from cursor_usage_menubar.cursor_pricing import (
+    apply_model_filter,
     billable_models,
     cursor_model_forecast,
+    filter_models,
     forecast_card_captions,
     forecast_menu_row,
     is_cursor_pool_model,
@@ -110,6 +112,38 @@ class ForecastTest(unittest.TestCase):
                 spent=800,
             )))
         )
+
+
+class ModelFilterTest(unittest.TestCase):
+    def test_splits_cursor_and_other_and_keeps_matching_auto_children(self):
+        grok = ModelSpend("Cursor Grok 4.5", "grok-4.5", 500, 100_000, 10_000, 5, False)
+        claude = ModelSpend(
+            "Claude 4.6 Sonnet", "claude-4.6-sonnet", 1800, 1_000_000, 200_000, 10, False
+        )
+        auto = ModelSpend(
+            "Auto", "auto-smart", 2300, 1_100_000, 210_000, 15, True, (grok, claude)
+        )
+        cursor = filter_models((auto,), "cursor")
+        other = filter_models((auto,), "other")
+        self.assertEqual([m.label for m in cursor], ["Auto"])
+        self.assertEqual([c.label for c in cursor[0].children], ["Cursor Grok 4.5"])
+        self.assertEqual(cursor[0].total_cents, 500)
+        self.assertEqual([m.label for m in other], ["Auto"])
+        self.assertEqual([c.label for c in other[0].children], ["Claude 4.6 Sonnet"])
+        self.assertEqual(other[0].total_cents, 1800)
+        self.assertEqual(filter_models((auto,), "all"), (auto,))
+
+    def test_apply_model_filter_keeps_budget_recomputes_spend(self):
+        grok = ModelSpend("Composer 2.5", "composer-2.5", 400, 10, 4, 2, False)
+        claude = ModelSpend("Claude 4.6 Sonnet", "claude-4.6-sonnet", 600, 10, 4, 3, False)
+        snap = _snap((grok, claude), spent=1000, limit=5000, percent=20)
+        filtered = apply_model_filter(snap, "cursor")
+        self.assertEqual(filtered.limit_cents, 5000)
+        self.assertEqual(filtered.spent_cents, 400)
+        self.assertEqual(filtered.remaining_cents, 4600)
+        self.assertEqual(filtered.percent, 8)
+        self.assertEqual([m.label for m in filtered.models], ["Composer 2.5"])
+        self.assertIs(apply_model_filter(snap, "all"), snap)
 
 
 if __name__ == "__main__":

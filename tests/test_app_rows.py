@@ -37,7 +37,7 @@ class InfoRowsTest(unittest.TestCase):
         self.assertIn("$237.34", joined)
         self.assertIn("47%", joined)
         self.assertTrue(any(r.startswith("Top model:") for r in rows))
-        self.assertTrue(any(r == "View: Team (all)" for r in rows))
+        self.assertTrue(any(r == "View: Global" for r in rows))
         self.assertFalse(any("Grok" in r for r in rows))
 
     def test_view_row_shows_myself_and_group(self):
@@ -57,6 +57,9 @@ class InfoRowsTest(unittest.TestCase):
         )
         self.assertTrue(
             any(r == "View: Myself only" for r in info_rows(UsageSnapshot(**base, scope="self")))
+        )
+        self.assertTrue(
+            any(r == "View: Global" for r in info_rows(UsageSnapshot(**base, scope="team")))
         )
         self.assertTrue(
             any(
@@ -217,6 +220,17 @@ class InfoRowsTest(unittest.TestCase):
         with patch("cursor_usage_menubar.app.fetch_usage", return_value=good):
             snap = _safe_fetch_usage()
         self.assertIs(snap, good)
+
+    def test_view_menu_includes_global(self):
+        import inspect
+
+        from cursor_usage_menubar.app import CursorUsageApp
+
+        source = inspect.getsource(CursorUsageApp._view_menu)
+        self.assertIn('"Global"', source)
+        self.assertIn('_select_view("team")', source)
+        enter = inspect.getsource(CursorUsageApp._enter_group_id)
+        self.assertIn('{"scope": "team"}', enter)
 
 
 if __name__ == "__main__":

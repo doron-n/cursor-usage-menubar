@@ -18,10 +18,13 @@ def percent_used(used: int, limit: int) -> int | None:
     return int((used / limit) * 100)
 
 
-def actual_usage_caption(percent: int | None, users_count: int | None = None) -> str:
+def actual_usage_caption(
+    percent: int | None, users_count: int | None = None, *, scope: str = "self"
+) -> str:
     parts = ["This month"]
     if percent is not None:
-        parts.append(f"{percent}% of monthly budget")
+        budget = "global budget" if scope == "team" else "monthly budget"
+        parts.append(f"{percent}% of {budget}")
     if users_count is not None:
         noun = "user" if users_count == 1 else "users"
         parts.append(f"{users_count} {noun}")

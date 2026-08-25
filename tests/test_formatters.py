@@ -29,6 +29,10 @@ class FormattersTest(unittest.TestCase):
         )
         self.assertEqual(actual_usage_caption(10, 1), "This month · 10% of monthly budget · 1 user")
         self.assertEqual(actual_usage_caption(None), "This month")
+        self.assertEqual(
+            actual_usage_caption(47, scope="team"),
+            "This month · 47% of global budget",
+        )
 
     def test_menu_title_live_and_unknown(self):
         self.assertEqual(menu_title(23734, 48), "48%")

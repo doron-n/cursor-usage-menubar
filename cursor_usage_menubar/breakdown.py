@@ -10,6 +10,7 @@ from AppKit import (
     NSColor,
     NSFont,
     NSMakeRect,
+    NSPopUpButton,
     NSScrollView,
     NSTextField,
     NSView,
@@ -23,6 +24,8 @@ from objc import python_method
 from objc import super as objc_super
 
 from cursor_usage_menubar.cursor_pricing import (
+    MODEL_FILTERS,
+    apply_model_filter,
     cursor_model_forecast,
     forecast_card_captions,
 )
@@ -103,12 +106,13 @@ def fill_summary_card(
 ) -> None:
     spent = dollars(snapshot.spent_cents) if snapshot.spent_cents is not None else "—"
     budget = dollars(snapshot.limit_cents) if snapshot.limit_cents else "—"
+    budget_title = "Global budget" if snapshot.scope == "team" else "Monthly budget"
     host._label(card, spent, 16, 12, 300, 36, size=28, bold=True)
-    host._label(card, "Monthly budget", 330, 14, 178, 16, size=11, secondary=True)
+    host._label(card, budget_title, 330, 14, 178, 16, size=11, secondary=True)
     host._label(card, budget, 330, 32, 178, 22, size=16, bold=True)
     host._label(
         card,
-        actual_usage_caption(snapshot.percent, users_count),
+        actual_usage_caption(snapshot.percent, users_count, scope=snapshot.scope),
         16,
         52,
         508,
@@ -172,6 +176,13 @@ class BarView(NSView):
         ).fill()
 
 
+MODEL_FILTER_LABELS = {
+    "all": "All models",
+    "cursor": "Cursor models",
+    "other": "Other models",
+}
+
+
 class BreakdownController(NSObject):
     _instance = None
 
@@ -179,6 +190,7 @@ class BreakdownController(NSObject):
         self = objc_super(BreakdownController, self).init()
         self.window = None
         self.auto_expanded = False
+        self.model_filter = "all"
         self.snapshot = None
         return self
 
@@ -197,6 +209,12 @@ class BreakdownController(NSObject):
 
     def toggleAuto_(self, _sender):
         self.auto_expanded = not self.auto_expanded
+        self.render()
+
+    def filterChanged_(self, sender):
+        idx = int(sender.indexOfSelectedItem())
+        if 0 <= idx < len(MODEL_FILTERS):
+            self.model_filter = MODEL_FILTERS[idx]
         self.render()
 
     @python_method
@@ -229,7 +247,8 @@ class BreakdownController(NSObject):
     @python_method
     def render(self):
         snap = self.snapshot
-        height = max(640, layout_height(snap, self.auto_expanded))
+        displayed = apply_model_filter(snap, self.model_filter)
+        height = max(640, layout_height(displayed, self.auto_expanded))
         scroll = NSScrollView.alloc().initWithFrame_(self.window.contentView().bounds())
         scroll.setHasVerticalScroller_(True)
         scroll.setBorderType_(0)
@@ -239,9 +258,9 @@ class BreakdownController(NSObject):
         doc = FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, WINDOW_WIDTH, height))
         doc.setWantsLayer_(True)
         y = PAD
-        y = self._header(doc, snap, y)
-        y = self._summary(doc, snap, y)
-        y = self._models(doc, snap, y)
+        y = self._header(doc, displayed, y)
+        y = self._summary(doc, displayed, y)
+        y = self._models(doc, displayed, y)
         self._footer(doc, y)
         scroll.setDocumentView_(doc)
         self.window.setContentView_(scroll)
@@ -303,6 +322,18 @@ class BreakdownController(NSObject):
             bold=True,
             secondary=True,
         )
+        popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
+            NSMakeRect(WINDOW_WIDTH - PAD - 150, y - 4, 150, 26), False
+        )
+        popup.addItemsWithTitles_([MODEL_FILTER_LABELS[key] for key in MODEL_FILTERS])
+        popup.selectItemAtIndex_(
+            MODEL_FILTERS.index(self.model_filter)
+            if self.model_filter in MODEL_FILTERS
+            else 0
+        )
+        popup.setTarget_(self)
+        popup.setAction_("filterChanged:")
+        doc.addSubview_(popup)
         y += 28
         total = snap.spent_cents or sum(m.total_cents for m in snap.models) or 1
         for model in snap.models:

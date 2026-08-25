@@ -62,6 +62,15 @@ class BreakdownLayoutTest(unittest.TestCase):
     def test_show_breakdown_is_callable(self):
         self.assertTrue(callable(show_breakdown))
 
+    def test_model_filter_popup_is_wired(self):
+        import cursor_usage_menubar.breakdown as mod
+
+        source = inspect.getsource(mod)
+        self.assertIn("NSPopUpButton", source)
+        self.assertIn("filterChanged:", source)
+        self.assertIn("Cursor models", source)
+        self.assertIn("Other models", source)
+
 
 class BreakdownWindowTest(unittest.TestCase):
     def _controller(self):
@@ -70,6 +79,10 @@ class BreakdownWindowTest(unittest.TestCase):
         ctrl = BreakdownController.alloc().init()
         ctrl.snapshot = _snap()
         return ctrl
+
+    def test_default_filter_is_all_models(self):
+        ctrl = self._controller()
+        self.assertEqual(ctrl.model_filter, "all")
 
     def test_window_not_released_when_closed(self):
         ctrl = self._controller()

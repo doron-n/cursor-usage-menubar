@@ -74,6 +74,8 @@ class UsageSnapshot:
     def view_label(self) -> str:
         if self.scope == "self":
             return "Myself only"
+        if self.scope == "team":
+            return "Global"
         if self.scope == "group" or self.group_id is not None:
             label = self.group_label or (
                 str(self.group_id) if self.group_id is not None else "Group"
@@ -85,7 +87,7 @@ class UsageSnapshot:
             ):
                 return f"{self.group_label} ({self.group_id})"
             return label
-        return "Team (all)"
+        return "Global"
 
     @staticmethod
     def empty(status: str) -> "UsageSnapshot":

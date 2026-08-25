@@ -214,7 +214,7 @@ class CursorUsageApp(rumps.App):
     def _enter_group_id(self, _sender=None) -> None:
         current = load_prefs().get("group_id")
         win = rumps.Window(
-            message="Billing group ID (leave empty for the whole team)",
+            message="Billing group ID (leave empty for Global)",
             title="Select Group",
             default_text=str(current) if current is not None else "9485",
             ok="Use",
@@ -226,7 +226,7 @@ class CursorUsageApp(rumps.App):
             return
         text = str(getattr(response, "text", "") or "").strip()
         if not text:
-            save_prefs({"scope": "self"})
+            save_prefs({"scope": "team"})
             self.refresh_now()
             return
         try:
@@ -243,6 +243,9 @@ class CursorUsageApp(rumps.App):
         self_item = rumps.MenuItem("Myself only", callback=self._select_view("self"))
         self_item.state = 1 if selected_scope == "self" else 0
         menu.add(self_item)
+        global_item = rumps.MenuItem("Global", callback=self._select_view("team"))
+        global_item.state = 1 if selected_scope == "team" else 0
+        menu.add(global_item)
         menu.add(rumps.separator)
         seen: set[int] = set()
         for group in snapshot.groups:

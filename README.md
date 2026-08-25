@@ -38,14 +38,14 @@ After `./install.sh install`, the LaunchAgent's `KeepAlive` means clicking Quit 
 
 Menu title looks like `18%` (or `—` if usage is unknown). The same percent appears as a Dock badge. Click the menu-bar title or the Dock icon for account/plan/view/spend/allowance/remaining/cycle/top model, then:
 
-- View (Myself only / billing groups / Enter Group ID…)
+- View (Myself only / Global / billing groups / Enter Group ID…)
 - View Users by Usage… (native window, when a group is selected)
-- View Model Breakdown… (native window, Auto accordion; group-wide models)
+- View Model Breakdown… (native window, Auto accordion, Cursor/other model filter)
 - Refresh Now
 - Open Cursor Dashboard
 - Quit
 
-**Myself only** uses your billing-group member spend and per-user cap. A billing group (for example `9484` / xDome-R&D) uses Cursor's group spend for this cycle.
+**Myself only** uses your billing-group member spend and per-user cap. **Global** shows the enterprise/global budget from Cursor's usage summary. A billing group (for example `9484` / xDome-R&D) uses Cursor's group spend for this cycle.
 
 ## Verify
 

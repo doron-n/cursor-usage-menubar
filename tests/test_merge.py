@@ -362,6 +362,31 @@ class MergeTest(unittest.TestCase):
         self.assertEqual(snap.limit_cents, 50000)
         self.assertEqual(snap.view_label(), "Myself only")
 
+    def test_team_scope_uses_overall_as_global_budget(self):
+        snap = merge_snapshot(
+            session=_session(),
+            usage_summary={
+                "individualUsage": {
+                    "overall": {"used": 23734, "limit": 50000, "remaining": 26266}
+                }
+            },
+            period_usage=None,
+            aggregated={
+                "totalCostCents": 4060727,
+                "aggregations": [
+                    {"modelIntent": "grok", "totalCents": 4060727, "inputTokens": 1, "outputTokens": 1}
+                ],
+            },
+            filtered={"usageEvents": []},
+            plan_info={"planName": "Enterprise"},
+            scope="team",
+        )
+        self.assertEqual(snap.spent_cents, 23734)
+        self.assertEqual(snap.limit_cents, 50000)
+        self.assertEqual(snap.remaining_cents, 26266)
+        self.assertEqual(snap.percent, 47)
+        self.assertEqual(snap.view_label(), "Global")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -32,7 +32,7 @@ class PrefsTest(unittest.TestCase):
             self.assertIsNone(load_prefs(path)["group_id"])
             self.assertEqual(load_prefs(path)["scope"], "self")
             save_prefs({"scope": "team"}, path)
-            self.assertEqual(load_prefs(path)["scope"], "self")
+            self.assertEqual(load_prefs(path)["scope"], "team")
 
 
 if __name__ == "__main__":

@@ -53,6 +53,70 @@ def billable_models(models: tuple[ModelSpend, ...]) -> tuple[ModelSpend, ...]:
     return tuple(out)
 
 
+MODEL_FILTERS = ("all", "cursor", "other")
+
+
+def _matches_pool(model: ModelSpend, pool: str) -> bool:
+    is_cursor = is_cursor_pool_model(model.label, model.model_intent)
+    if pool == "cursor":
+        return is_cursor
+    if pool == "other":
+        return not is_cursor
+    return True
+
+
+def _with_children(model: ModelSpend, children: tuple[ModelSpend, ...]) -> ModelSpend:
+    return ModelSpend(
+        label=model.label,
+        model_intent=model.model_intent,
+        total_cents=sum(c.total_cents for c in children),
+        input_tokens=sum(c.input_tokens for c in children),
+        output_tokens=sum(c.output_tokens for c in children),
+        request_count=sum(c.request_count for c in children),
+        is_auto=model.is_auto,
+        children=children,
+    )
+
+
+def filter_models(
+    models: tuple[ModelSpend, ...], pool: str
+) -> tuple[ModelSpend, ...]:
+    if pool not in ("cursor", "other"):
+        return models
+    out: list[ModelSpend] = []
+    for model in models:
+        if model.is_auto and model.children:
+            kids = tuple(c for c in model.children if _matches_pool(c, pool))
+            if kids:
+                out.append(_with_children(model, kids))
+            continue
+        if _matches_pool(model, pool):
+            out.append(model)
+    return tuple(out)
+
+
+def apply_model_filter(snapshot: UsageSnapshot, pool: str) -> UsageSnapshot:
+    from dataclasses import replace
+
+    models = filter_models(snapshot.models, pool)
+    if pool not in ("cursor", "other"):
+        return snapshot
+    spent = sum(m.total_cents for m in models)
+    remaining = (
+        None
+        if snapshot.limit_cents is None
+        else snapshot.limit_cents - spent
+    )
+    return replace(
+        snapshot,
+        models=models,
+        spent_cents=spent,
+        remaining_cents=remaining,
+        percent=percent_used(spent, snapshot.limit_cents or 0),
+        top_model=models[0] if models else None,
+    )
+
+
 def cursor_model_forecast(snapshot: UsageSnapshot) -> CursorForecast | None:
     """Spend if third-party tokens had run at Composer 2.5 list rates.
 
