@@ -4,6 +4,7 @@ import webbrowser
 
 import rumps
 from AppKit import NSApplication, NSApplicationActivationPolicyRegular
+from rumps import events
 
 from cursor_usage_menubar.breakdown import refresh_if_visible, show_breakdown
 from cursor_usage_menubar.client import fetch_usage, load_group_models
@@ -29,7 +30,9 @@ def _safe_fetch_usage() -> UsageSnapshot:
 
 def set_dock_badge(percent: int | None) -> None:
     try:
-        NSApplication.sharedApplication().dockTile().setBadgeLabel_(dock_badge(percent))
+        NSApplication.sharedApplication().dockTile().setBadgeLabel_(
+            dock_badge(percent) or None
+        )
     except Exception:
         return
 
@@ -72,14 +75,17 @@ def handle_dock_reopen(nsapp) -> bool:
 
 
 def install_dock_reopen() -> None:
-    from rumps.rumps import NSApp
+    try:
+        from rumps.rumps import NSApp
 
-    def applicationShouldHandleReopen_hasVisibleWindows_(self, app, flag):
-        return handle_dock_reopen(self)
+        def applicationShouldHandleReopen_hasVisibleWindows_(self, app, flag):
+            return handle_dock_reopen(self)
 
-    NSApp.applicationShouldHandleReopen_hasVisibleWindows_ = (
-        applicationShouldHandleReopen_hasVisibleWindows_
-    )
+        NSApp.applicationShouldHandleReopen_hasVisibleWindows_ = (
+            applicationShouldHandleReopen_hasVisibleWindows_
+        )
+    except Exception:
+        return
 
 
 def info_rows(snapshot: UsageSnapshot) -> list[str]:
@@ -154,7 +160,7 @@ def user_usage_rows(snapshot: UsageSnapshot) -> list[str]:
 
 class CursorUsageApp(rumps.App):
     def __init__(self) -> None:
-        super().__init__("—", quit_button=None)
+        super().__init__("Cursor Usage", title="—", quit_button=None)
         self._snapshot: UsageSnapshot | None = None
         self._view_callbacks: list = []
 
@@ -274,6 +280,10 @@ class CursorUsageApp(rumps.App):
 
     def quit_app(self, _sender=None) -> None:
         rumps.quit_application()
+
+    @events.before_start
+    def _pin_status_item_title(self) -> None:
+        pin_status_item_title(getattr(self, "_nsapp", None), self.title or "—")
 
     def run(self, **kwargs):
         install_dock_reopen()

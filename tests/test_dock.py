@@ -1,8 +1,14 @@
 import unittest
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+from rumps import events
+from rumps.rumps import NSApp
+
 from cursor_usage_menubar.app import (
+    CursorUsageApp,
     handle_dock_reopen,
+    install_dock_reopen,
     pin_status_item_title,
     set_dock_badge,
 )
@@ -25,7 +31,7 @@ class SetDockBadgeTest(unittest.TestCase):
         with patch("cursor_usage_menubar.app.NSApplication") as ns:
             ns.sharedApplication.return_value = app
             set_dock_badge(None)
-        tile.setBadgeLabel_.assert_called_once_with("")
+        tile.setBadgeLabel_.assert_called_once_with(None)
 
     def test_swallows_appkit_errors(self):
         with patch("cursor_usage_menubar.app.NSApplication") as ns:
@@ -58,3 +64,51 @@ class HandleDockReopenTest(unittest.TestCase):
 
     def test_missing_item_still_returns_true(self):
         self.assertTrue(handle_dock_reopen(Mock(spec=[])))
+
+
+class InstallDockReopenTest(unittest.TestCase):
+    def test_installs_callable_on_rumps_nsapp(self):
+        install_dock_reopen()
+        self.assertTrue(
+            callable(
+                getattr(
+                    NSApp,
+                    "applicationShouldHandleReopen_hasVisibleWindows_",
+                    None,
+                )
+            )
+        )
+
+    def test_swallows_install_errors(self):
+        class RaisingTarget:
+            def __setattr__(self, name, value):
+                raise RuntimeError("PyObjC rejected method")
+
+        fake_module = SimpleNamespace(NSApp=RaisingTarget())
+        with patch.dict("sys.modules", {"rumps.rumps": fake_module}):
+            install_dock_reopen()
+
+
+class CursorUsageAppTest(unittest.TestCase):
+    def test_uses_stable_application_name_and_placeholder_title(self):
+        with patch("cursor_usage_menubar.app.rumps.App.__init__") as init:
+            CursorUsageApp()
+        init.assert_called_once_with(
+            "Cursor Usage",
+            title="—",
+            quit_button=None,
+        )
+
+    def test_registers_before_start_callback_that_pins_current_title(self):
+        self.assertIn(CursorUsageApp._pin_status_item_title, events.before_start.callbacks)
+        item = Mock()
+        button = Mock()
+        item.button.return_value = button
+        app = CursorUsageApp.__new__(CursorUsageApp)
+        app._nsapp = Mock(nsstatusitem=item)
+        app._title = "18%"
+
+        app._pin_status_item_title()
+
+        item.setVisible_.assert_called_once_with(True)
+        button.setTitle_.assert_called_once_with("18%")
