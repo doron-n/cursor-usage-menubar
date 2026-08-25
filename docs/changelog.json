@@ -1,6 +1,89 @@
 {
   "releases": [
     {
+      "version": "1.0.19",
+      "title": "Users pie matches official spend",
+      "highlights": [
+        "The Users list Cursor vs other pie now adds up to the official Spent total.",
+        "Opening a person scales that pie to their official spend, using the same mix.",
+        "User bars and Cursor-model sort still use matched events."
+      ]
+    },
+    {
+      "version": "1.0.18",
+      "title": "Overview pie matches official spend",
+      "highlights": [
+        "Cursor vs other on Overview now adds up to the official Spent total.",
+        "The split still comes from aggregated models, then recent events if models are missing.",
+        "Users-tab mix is unchanged and still uses matched events."
+      ]
+    },
+    {
+      "version": "1.0.17",
+      "title": "Overview shows Cursor vs other beside the budget",
+      "highlights": [
+        "Overview places the Cursor vs other pie next to the budget usage card.",
+        "The mix uses the same Cursor / other colors as Users.",
+        "Spend, remaining, and people tiles stay on the budget card."
+      ]
+    },
+    {
+      "version": "1.0.16",
+      "title": "Cursor-model sort uses each user’s mix",
+      "highlights": [
+        "Users → Cursor models ranks people by how much of their own spend is Cursor models.",
+        "Someone mostly on Cursor now ranks above a heavier spender who is mostly other models.",
+        "People with no model events stay at the bottom of that sort."
+      ]
+    },
+    {
+      "version": "1.0.15",
+      "title": "User bars show Cursor vs other spend",
+      "highlights": [
+        "Each user usage bar stays the same length, split into Cursor models and other models.",
+        "The Users list can sort by Cursor model usage.",
+        "Totals and cap percent on each row stay the same."
+      ]
+    },
+    {
+      "version": "1.0.14",
+      "title": "Slim menu and an in-app Settings page",
+      "highlights": [
+        "The menu bar dropdown keeps Open, Settings, Refresh, and Quit.",
+        "View, theme, refresh interval, and Dock badge live on the Settings tab.",
+        "Account and version details moved out of the dropdown into Settings."
+      ]
+    },
+    {
+      "version": "1.0.13",
+      "title": "Current-month daily spend and 7-day top spenders",
+      "highlights": [
+        "Overview spend is the current calendar month, with one bar per day.",
+        "Spend spikes lists the three people who spent the most in the last 7 days.",
+        "The graph no longer reads as a cycle total; peak is the busiest day."
+      ]
+    },
+    {
+      "version": "1.0.12",
+      "title": "Per-user models load outside the newest event window",
+      "highlights": [
+        "User details fetch that person's events when the team-wide page window missed them.",
+        "Top 3 models and Cursor vs other no longer stay empty for older high spenders.",
+        "Matched events already in the snapshot are still used without an extra request."
+      ]
+    },
+    {
+      "version": "1.0.11",
+      "title": "Usage loads when api2.cursor.sh is unreachable",
+      "highlights": [
+        "Model spend, events, and plan info fall back to cursor.com dashboard APIs.",
+        "The window still fills when api2.cursor.sh does not resolve.",
+        "Cookie-backed dashboard calls stay read-only and never persist tokens.",
+        "The menu and window show the installed version so you can tell which build is running.",
+        "Only Cursor admins can open usage data; other roles see a permission message."
+      ]
+    },
+    {
       "version": "1.0.10",
       "title": "Month graph, user mix, and mission-control window",
       "highlights": [

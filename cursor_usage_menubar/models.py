@@ -11,6 +11,7 @@ class Session:
     team_id: int | None = None
     team_name: str | None = None
     plan_hint: str | None = None
+    team_role: str | None = None
 
 
 @dataclass(frozen=True)

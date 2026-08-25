@@ -84,7 +84,27 @@ class AuthTest(unittest.TestCase):
             self.assertEqual(sess.plan_hint, "enterprise")
             self.assertEqual(sess.sub, "auth0|abc")
             self.assertEqual(sess.access_token, token)
+            self.assertIsNone(sess.team_role)
             self.assertFalse(hasattr(sess, "refresh_token"))
+        finally:
+            path.unlink(missing_ok=True)
+
+    def test_read_session_captures_team_role(self):
+        token = _jwt("auth0|abc")
+        path = _write_db(
+            {
+                "cursorAuth/accessToken": token,
+                "cursorAuth/cachedEmail": "ada@example.com",
+                "cursorAuth/cachedTeam": json.dumps(
+                    {"teamId": 42, "name": "Acme", "role": "owner"}
+                ),
+            }
+        )
+        try:
+            sess = read_session(path)
+            self.assertIsNotNone(sess)
+            assert sess is not None
+            self.assertEqual(sess.team_role, "owner")
         finally:
             path.unlink(missing_ok=True)
 

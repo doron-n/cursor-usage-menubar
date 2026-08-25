@@ -12,6 +12,7 @@ from cursor_usage_menubar.breakdown import (
 )
 from cursor_usage_menubar.models import BillingGroup, GroupMember, ModelSpend, UsageSnapshot
 from cursor_usage_menubar.users import (
+    cursor_usage_share,
     member_cap_fraction,
     member_cap_percent,
     ordered_members,
@@ -70,6 +71,14 @@ class UsersLayoutTest(unittest.TestCase):
         self.assertEqual(names(sort_by="name", descending=True), ["Cy", "Bob", "Ada"])
         self.assertEqual(names(sort_by="cap", descending=True), ["Bob", "Ada", "Cy"])
         self.assertEqual(names(sort_by="cap", descending=False), ["Cy", "Ada", "Bob"])
+        self.assertEqual(
+            names(
+                sort_by="cursor",
+                descending=True,
+                cursor_by_id={1: 0.2, 2: 0.9},
+            ),
+            ["Ada", "Bob", "Cy"],
+        )
 
     def test_usage_sort_is_percent_of_cap_not_dollars(self):
         members = (
@@ -103,6 +112,11 @@ class UsersLayoutTest(unittest.TestCase):
         self.assertEqual(names, ["User 1"])
         global_snap = replace(_group_snap(2), scope="team", group_id=None)
         self.assertEqual(len(listed_members(global_snap)), 2)
+
+    def test_cursor_usage_share_is_percent_of_that_users_models(self):
+        self.assertAlmostEqual(cursor_usage_share(100, 0), 1.0)
+        self.assertAlmostEqual(cursor_usage_share(100, 300), 0.25)
+        self.assertIsNone(cursor_usage_share(0, 0))
 
     def test_member_percent_is_of_personal_cap_not_group_total(self):
         member = GroupMember(1, "yair.z@claroty.com", "Yair Zori", 91537, 100000)
@@ -167,7 +181,7 @@ class UsersWindowTest(unittest.TestCase):
         ctrl = self._controller()
         ctrl._ensure_window()
         by = Mock()
-        by.indexOfSelectedItem.return_value = 1
+        by.indexOfSelectedItem.return_value = 2
         ctrl.sortByChanged_(by)
         self.assertEqual(ctrl.sort_by, "name")
         direction = Mock()

@@ -1,8 +1,17 @@
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import Mock, patch
 
-from cursor_usage_menubar.app_version import bump, notes_for, read_version, write_version
+from cursor_usage_menubar.app_version import (
+    bump,
+    current_version,
+    notes_for,
+    read_version,
+    version_label,
+    write_version,
+)
 
 
 class VersionBumpTest(unittest.TestCase):
@@ -61,6 +70,28 @@ class VersionBumpTest(unittest.TestCase):
             notes = notes_for("9.9.9", path)
         self.assertIn("Cursor Usage 9.9.9 for Apple Silicon.", notes)
         self.assertNotIn("- ", notes)
+
+    def test_current_version_reads_version_file(self):
+        env = {key: value for key, value in os.environ.items() if key != "CURSOR_USAGE_VERSION"}
+        with patch.dict(os.environ, env, clear=True):
+            self.assertEqual(current_version(), read_version())
+            self.assertEqual(version_label(), f"Version {read_version()}")
+
+    def test_current_version_prefers_env(self):
+        with patch.dict(os.environ, {"CURSOR_USAGE_VERSION": "9.9.9"}):
+            self.assertEqual(current_version(), "9.9.9")
+
+    def test_frozen_app_reads_info_plist(self):
+        bundle = Mock()
+        bundle.infoDictionary.return_value = {"CFBundleShortVersionString": "1.2.3"}
+        env = {key: value for key, value in os.environ.items() if key != "CURSOR_USAGE_VERSION"}
+        with (
+            patch.dict(os.environ, env, clear=True),
+            patch("sys.frozen", True, create=True),
+            patch("Foundation.NSBundle") as ns_bundle,
+        ):
+            ns_bundle.mainBundle.return_value = bundle
+            self.assertEqual(current_version(), "1.2.3")
 
 
 if __name__ == "__main__":

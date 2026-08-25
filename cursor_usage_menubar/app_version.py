@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -54,6 +56,40 @@ def notes_for(version: str, path: Path = CHANGELOG_PATH, *, history: bool = Fals
 
 def read_version(path: Path = VERSION_PATH) -> str:
     return path.read_text(encoding="utf-8").strip()
+
+
+def current_version() -> str:
+    env = (os.environ.get("CURSOR_USAGE_VERSION") or "").strip()
+    if env:
+        return env
+    if getattr(sys, "frozen", False):
+        try:
+            from Foundation import NSBundle
+
+            info = NSBundle.mainBundle().infoDictionary() or {}
+            for key in ("CFBundleShortVersionString", "CFBundleVersion"):
+                value = str(info.get(key) or "").strip()
+                if value:
+                    return value
+        except Exception:
+            pass
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            bundled = Path(meipass) / "VERSION"
+            try:
+                text = bundled.read_text(encoding="utf-8").strip()
+            except OSError:
+                text = ""
+            if text:
+                return text
+    try:
+        return read_version()
+    except OSError:
+        return "0.0.0"
+
+
+def version_label() -> str:
+    return f"Version {current_version()}"
 
 
 def bump(version: str, part: str = "patch") -> str:

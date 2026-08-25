@@ -22,6 +22,7 @@
       --card-2: rgba(255, 255, 255, 0.055);
       --green: #3DFFD2;
       --green-2: #7cffea;
+      --other: #b794f6;
       --blue: #0a84ff;
       --shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
       --max: 1120px;
@@ -154,76 +155,165 @@
       font-size: 13px;
       line-height: 1.45;
     }
+    .dl-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .dl-count {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 6px;
+      color: var(--ink);
+      font-size: 15px;
+      font-weight: 650;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.03em;
+    }
+    .dl-count[hidden] { display: none; }
+    .dl-count em {
+      color: var(--green);
+      font-style: normal;
+      font-size: 20px;
+    }
+    .dl-count span {
+      color: var(--muted);
+      font-weight: 500;
+      font-size: 13px;
+    }
     .stage {
       position: relative;
       min-height: 420px;
-    }
-    .desk {
-      position: absolute;
-      inset: 20px 0 0;
-      border-radius: 22px;
-      background:
-        linear-gradient(180deg, rgba(255,255,255,0.04), transparent 28%),
-        #101014;
-      border: 1px solid var(--line);
-      box-shadow: var(--shadow);
-      overflow: hidden;
-    }
-    .menubar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      height: 34px;
-      padding: 0 14px;
-      background: rgba(8, 8, 10, 0.72);
-      backdrop-filter: blur(16px);
-      border-bottom: 1px solid var(--line);
-      font-size: 12px;
-      color: #d0d0d6;
-    }
-    .menubar b {
-      color: var(--green-2);
-      font-variant-numeric: tabular-nums;
-    }
-    .float-menu {
-      position: absolute;
-      top: 58px;
-      right: 28px;
-      width: min(320px, calc(100% - 40px));
-      border-radius: 16px;
-      background: rgba(28, 28, 32, 0.86);
-      border: 1px solid rgba(255,255,255,0.1);
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(22px);
-      padding: 10px 0;
       animation: rise 900ms cubic-bezier(.16,1,.3,1) both;
     }
-    .float-menu .row {
+    .shot-frame {
+      border-radius: 18px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+      background: #101014;
+    }
+    .shot-frame img {
+      display: block;
+      width: 100%;
+      height: auto;
+      aspect-ratio: 880 / 620;
+      object-fit: cover;
+      object-position: top center;
+    }
+    .live-chip {
+      position: absolute;
+      left: 16px;
+      bottom: 16px;
       display: flex;
-      justify-content: space-between;
-      gap: 16px;
-      padding: 7px 16px;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(8, 10, 16, 0.82);
+      border: 1px solid var(--line);
+      backdrop-filter: blur(16px);
       font-size: 13px;
-      color: #ececf1;
-    }
-    .float-menu .row span { color: var(--muted); }
-    .float-menu .sep {
-      height: 1px;
-      background: var(--line);
-      margin: 7px 12px;
-    }
-    .float-menu .head {
-      padding: 6px 16px 10px;
-      font-size: 12px;
-      color: var(--dim);
-    }
-    .pct {
-      font-size: 28px;
       font-weight: 650;
-      letter-spacing: -0.04em;
+      letter-spacing: -0.03em;
+    }
+    .live-chip b {
       color: var(--green-2);
       font-variant-numeric: tabular-nums;
     }
+    .pulse {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 0 0 rgba(61, 255, 210, 0.7);
+      animation: pulse 1.8s ease-out infinite;
+    }
+    .graphs {
+      display: grid;
+      grid-template-columns: 1.4fr 0.8fr;
+      gap: 12px;
+      padding: 8px 0 48px;
+    }
+    .graph-card {
+      padding: 18px 18px 16px;
+      border-radius: 18px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      min-height: 168px;
+    }
+    .graph-card strong {
+      display: block;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 14px;
+    }
+    .bars {
+      display: flex;
+      align-items: flex-end;
+      gap: 5px;
+      height: 96px;
+    }
+    .bars i {
+      flex: 1;
+      display: block;
+      border-radius: 4px 4px 0 0;
+      background: linear-gradient(180deg, var(--green-2), #1aa88a);
+      transform-origin: bottom;
+      animation: grow 1100ms cubic-bezier(.16,1,.3,1) both;
+    }
+    .pie-wrap {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .pie {
+      width: 104px;
+      height: 104px;
+      border-radius: 50%;
+      background: conic-gradient(var(--green) 0 62%, var(--other) 62% 100%);
+      mask: radial-gradient(circle at center, transparent 38px, #000 39px);
+      -webkit-mask: radial-gradient(circle at center, transparent 38px, #000 39px);
+      animation: spin-in 1200ms cubic-bezier(.16,1,.3,1) both;
+    }
+    .legend { display: grid; gap: 8px; font-size: 13px; color: var(--muted); }
+    .legend b { color: var(--ink); font-weight: 650; }
+    .dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 6px;
+    }
+    .look {
+      padding: 8px 0 56px;
+    }
+    .look h2 {
+      font-size: 28px;
+      letter-spacing: -0.04em;
+      margin: 0 0 6px;
+    }
+    .look .sub {
+      color: var(--muted);
+      margin: 0 0 18px;
+    }
+    .gallery {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 12px;
+    }
+    .gallery .shot-frame:first-child { grid-row: span 2; }
+    .gallery figcaption {
+      margin: 8px 2px 0;
+      color: var(--dim);
+      font-size: 13px;
+    }
+    .gallery .shot-frame img {
+      transition: transform 700ms cubic-bezier(.16,1,.3,1);
+    }
+    .gallery .shot-frame:hover img { transform: scale(1.03); }
     .features {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
@@ -249,62 +339,54 @@
       line-height: 1.45;
     }
     .notes {
-      padding: 10px 0 80px;
+      padding: 10px 0 72px;
     }
     .notes h2 {
-      font-size: 28px;
+      font-size: 22px;
       letter-spacing: -0.04em;
-      margin: 0 0 6px;
+      margin: 0 0 4px;
     }
     .notes .sub {
       color: var(--muted);
-      margin: 0 0 22px;
+      margin: 0 0 12px;
+      font-size: 13px;
     }
     .latest {
-      border-radius: 22px;
-      padding: 28px;
-      background:
-        linear-gradient(180deg, rgba(48, 209, 88, 0.08), transparent 42%),
-        var(--card-2);
-      border: 1px solid rgba(48, 209, 88, 0.18);
-      box-shadow: var(--shadow);
+      border-radius: 14px;
+      padding: 14px 16px 12px;
+      background: var(--card-2);
+      border: 1px solid rgba(48, 209, 88, 0.16);
     }
     .badge {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 650;
       letter-spacing: 0.08em;
       text-transform: uppercase;
       color: var(--green);
-      margin-bottom: 10px;
-    }
-    .latest h3,
-    .prev h3 {
-      margin: 0 0 4px;
-      letter-spacing: -0.03em;
-      font-size: 22px;
+      margin-bottom: 6px;
     }
     .when {
       color: var(--dim);
-      font-size: 13px;
-      margin: 0 0 14px;
+      font-size: 12px;
+      margin: 8px 0 0;
     }
     .latest ul,
     .prev ul {
       margin: 0;
-      padding-left: 18px;
+      padding-left: 16px;
       color: #d7d7de;
-      line-height: 1.55;
+      font-size: 13.5px;
+      line-height: 1.4;
     }
     .previous {
-      margin-top: 18px;
+      margin-top: 8px;
       display: grid;
-      gap: 10px;
+      gap: 4px;
     }
     .prev {
-      border-radius: 16px;
+      border-radius: 10px;
       background: var(--card);
       border: 1px solid var(--line);
       overflow: hidden;
@@ -312,29 +394,20 @@
     .prev summary {
       list-style: none;
       cursor: pointer;
-      padding: 16px 18px;
+      padding: 8px 12px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      gap: 16px;
+      font-size: 13px;
     }
     .prev summary::-webkit-details-marker { display: none; }
     .prev summary::after {
-      content: "›";
+      content: "+";
       color: var(--dim);
-      font-size: 22px;
-      line-height: 1;
-      transform: rotate(90deg);
-      transition: transform 160ms ease;
-    }
-    .prev[open] summary::after { transform: rotate(-90deg); }
-    .prev summary strong { letter-spacing: -0.03em; }
-    .prev summary em {
-      font-style: normal;
-      color: var(--muted);
       font-size: 14px;
     }
-    .prev .body { padding: 0 18px 16px; }
+    .prev[open] summary::after { content: "–"; }
+    .prev .body { padding: 0 12px 8px; }
     footer {
       border-top: 1px solid var(--line);
       padding: 28px 0 48px;
@@ -358,13 +431,27 @@
       from { opacity: 0; transform: translateY(16px) scale(0.98); }
       to { opacity: 1; transform: none; }
     }
+    @keyframes grow {
+      from { transform: scaleY(0); }
+      to { transform: none; }
+    }
+    @keyframes spin-in {
+      from { opacity: 0; transform: rotate(-28deg) scale(0.86); }
+      to { opacity: 1; transform: none; }
+    }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(61, 255, 210, 0.55); }
+      70% { box-shadow: 0 0 0 10px rgba(61, 255, 210, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(61, 255, 210, 0); }
+    }
     @media (max-width: 900px) {
-      .hero, .features { grid-template-columns: 1fr; }
-      .stage { min-height: 380px; }
+      .hero, .features, .graphs, .gallery { grid-template-columns: 1fr; }
+      .gallery .shot-frame:first-child { grid-row: auto; }
+      .stage { min-height: 0; }
       .hero { padding-top: 28px; }
     }
     @media (prefers-reduced-motion: reduce) {
-      .float-menu { animation: none; }
+      .stage, .bars i, .pie, .pulse { animation: none; }
       html { scroll-behavior: auto; }
     }
   </style>
@@ -374,6 +461,7 @@
     <header>
       <div class="brand"><img class="mark" src="assets/app-icon.png" alt=""> Cursor Usage</div>
       <nav>
+        <a href="#look">Look</a>
         <a href="#notes">What’s new</a>
         <a href="https://github.com/doron-n/cursor-usage-menubar">GitHub</a>
       </nav>
@@ -391,7 +479,10 @@
           <a class="btn" id="download" href="https://github.com/doron-n/cursor-usage-menubar/releases/latest">
             Download installer <small id="btn-ver"></small>
           </a>
-          <div class="meta" id="version">Loading latest version…</div>
+          <div class="dl-meta">
+            <div class="dl-count" id="downloads" hidden></div>
+            <div class="meta" id="version">Loading latest version…</div>
+          </div>
         </div>
         <ol class="install">
           <li>Already signed in to the Cursor desktop app on this Mac.</li>
@@ -399,24 +490,32 @@
           <li>It installs <strong>Cursor Usage</strong> in Applications and launches it.</li>
         </ol>
       </div>
-      <div class="stage" aria-hidden="true">
-        <div class="desk">
-          <div class="menubar">
-            <span>Cursor</span>
-            <span><b id="live-pct">18%</b>  Mon 25  3:57</span>
-          </div>
+      <div class="stage">
+        <div class="shot-frame">
+          <img src="assets/overview.png" alt="Cursor Usage Overview with budget gauge, Cursor vs other pie, and daily spend bars">
         </div>
-        <div class="float-menu">
-          <div class="head">Cursor Usage</div>
-          <div class="row"><div class="pct" id="menu-pct">18%</div><span>of budget</span></div>
-          <div class="sep"></div>
-          <div class="row">View <span>Global</span></div>
-          <div class="row">Spent <span>$237.34</span></div>
-          <div class="row">Allowance <span>$237.34 / $500.00</span></div>
-          <div class="sep"></div>
-          <div class="row">View Model Breakdown… <span></span></div>
+        <div class="live-chip" aria-hidden="true">
+          <span class="pulse"></span>
+          Menu bar <b id="live-pct">18%</b>
         </div>
       </div>
+    </section>
+
+    <section class="graphs" aria-hidden="true">
+      <article class="graph-card">
+        <strong>Spend this month</strong>
+        <div class="bars" id="live-bars"></div>
+      </article>
+      <article class="graph-card">
+        <strong>Cursor vs other</strong>
+        <div class="pie-wrap">
+          <div class="pie"></div>
+          <div class="legend">
+            <div><span class="dot" style="background:var(--green)"></span><b>62%</b> Cursor</div>
+            <div><span class="dot" style="background:var(--other)"></span><b>38%</b> Other</div>
+          </div>
+        </div>
+      </article>
     </section>
 
     <section class="features">
@@ -438,9 +537,34 @@
       </article>
     </section>
 
+    <section class="look" id="look">
+      <h2>Inside the app</h2>
+      <p class="sub">Overview, people, and settings — captured from the menu-bar window.</p>
+      <div class="gallery">
+        <figure>
+          <div class="shot-frame">
+            <img src="assets/overview.png" alt="Overview tab with official spend, pie, and daily bars">
+          </div>
+          <figcaption>Overview — official spend, mix, and this month’s daily bars.</figcaption>
+        </figure>
+        <figure>
+          <div class="shot-frame">
+            <img src="assets/users.png" alt="Users tab with split Cursor vs other bars">
+          </div>
+          <figcaption>Users — Cursor vs other on every row.</figcaption>
+        </figure>
+        <figure>
+          <div class="shot-frame">
+            <img src="assets/settings.png" alt="Settings tab with view, theme, and refresh">
+          </div>
+          <figcaption>Settings — view, theme, refresh, Dock badge.</figcaption>
+        </figure>
+      </div>
+    </section>
+
     <section class="notes" id="notes">
       <h2>What’s new</h2>
-      <p class="sub" id="notes-sub">Release notes for the latest installer, then everything before it.</p>
+      <p class="sub" id="notes-sub">Highlights for this build, then earlier ones.</p>
       <article class="latest" id="latest">Loading release notes…</article>
       <div class="previous" id="previous"></div>
     </section>
@@ -455,6 +579,80 @@
   <script>
     const repo = "doron-n/cursor-usage-menubar";
     const fallbackNotes = {
+      "1.0.19": {
+        title: "Users pie matches official spend",
+        highlights: [
+          "The Users list Cursor vs other pie now adds up to the official Spent total.",
+          "Opening a person scales that pie to their official spend, using the same mix.",
+          "User bars and Cursor-model sort still use matched events."
+        ]
+      },
+      "1.0.18": {
+        title: "Overview pie matches official spend",
+        highlights: [
+          "Cursor vs other on Overview now adds up to the official Spent total.",
+          "The split still comes from aggregated models, then recent events if models are missing.",
+          "Users-tab mix is unchanged and still uses matched events."
+        ]
+      },
+      "1.0.17": {
+        title: "Overview shows Cursor vs other beside the budget",
+        highlights: [
+          "Overview places the Cursor vs other pie next to the budget usage card.",
+          "The mix uses the same Cursor / other colors as Users.",
+          "Spend, remaining, and people tiles stay on the budget card."
+        ]
+      },
+      "1.0.16": {
+        title: "Cursor-model sort uses each user’s mix",
+        highlights: [
+          "Users → Cursor models ranks people by how much of their own spend is Cursor models.",
+          "Someone mostly on Cursor now ranks above a heavier spender who is mostly other models.",
+          "People with no model events stay at the bottom of that sort."
+        ]
+      },
+      "1.0.15": {
+        title: "User bars show Cursor vs other spend",
+        highlights: [
+          "Each user usage bar stays the same length, split into Cursor models and other models.",
+          "The Users list can sort by Cursor model usage.",
+          "Totals and cap percent on each row stay the same."
+        ]
+      },
+      "1.0.14": {
+        title: "Slim menu and an in-app Settings page",
+        highlights: [
+          "The menu bar dropdown keeps Open, Settings, Refresh, and Quit.",
+          "View, theme, refresh interval, and Dock badge live on the Settings tab.",
+          "Account and version details moved out of the dropdown into Settings."
+        ]
+      },
+      "1.0.13": {
+        title: "Current-month daily spend and 7-day top spenders",
+        highlights: [
+          "Overview spend is the current calendar month, with one bar per day.",
+          "Spend spikes lists the three people who spent the most in the last 7 days.",
+          "The graph no longer reads as a cycle total; peak is the busiest day."
+        ]
+      },
+      "1.0.12": {
+        title: "Per-user models load outside the newest event window",
+        highlights: [
+          "User details fetch that person's events when the team-wide page window missed them.",
+          "Top 3 models and Cursor vs other no longer stay empty for older high spenders.",
+          "Matched events already in the snapshot are still used without an extra request."
+        ]
+      },
+      "1.0.11": {
+        title: "Usage loads when api2.cursor.sh is unreachable",
+        highlights: [
+          "Model spend, events, and plan info fall back to cursor.com dashboard APIs.",
+          "The window still fills when api2.cursor.sh does not resolve.",
+          "Cookie-backed dashboard calls stay read-only and never persist tokens.",
+          "The menu and window show the installed version so you can tell which build is running.",
+          "Only Cursor admins can open usage data; other roles see a permission message."
+        ]
+      },
       "1.0.10": {
         title: "Month graph, user mix, and mission-control window",
         highlights: [
@@ -554,6 +752,52 @@
       });
     }
 
+    function pkgDownloads(rel) {
+      return (rel.assets || []).reduce(function (sum, asset) {
+        if (!asset || !/\.pkg$/i.test(asset.name || "")) return sum;
+        return sum + (Number(asset.download_count) || 0);
+      }, 0);
+    }
+
+    function downloadTotal(releases) {
+      return (releases || []).reduce(function (sum, rel) {
+        if (!rel || rel.draft || rel.prerelease) return sum;
+        return sum + pkgDownloads(rel);
+      }, 0);
+    }
+
+    function formatCount(value) {
+      try {
+        return Number(value).toLocaleString();
+      } catch (e) {
+        return String(value);
+      }
+    }
+
+    function renderDownloads(releases, latestRel) {
+      const el = document.getElementById("downloads");
+      if (!el) return;
+      const hasAssets = (releases || []).some(function (rel) {
+        return rel && rel.assets && rel.assets.length;
+      });
+      if (!hasAssets) {
+        el.hidden = true;
+        el.textContent = "";
+        return;
+      }
+      const total = downloadTotal(releases);
+      const latestAsset = latestRel ? assetFor(latestRel) : null;
+      const latestCount = latestAsset ? (Number(latestAsset.download_count) || 0) : 0;
+      const latestVer = latestRel ? versionOf(latestRel.tag_name) : "";
+      const label = total === 1 ? "download" : "downloads";
+      const extra = latestCount && latestVer
+        ? " · " + formatCount(latestCount) + " for v" + latestVer
+        : "";
+      el.hidden = false;
+      el.innerHTML =
+        "<em>" + formatCount(total) + "</em><span> " + label + extra + "</span>";
+    }
+
     function notesFor(version, authored) {
       return authored[version] || null;
     }
@@ -609,33 +853,34 @@
         "Latest <strong>v" + escapeHtml(version) + "</strong> · Apple Silicon · ad-hoc signed";
       document.getElementById("btn-ver").textContent = "v" + version;
       if (asset) document.getElementById("download").href = asset.browser_download_url;
+      renderDownloads(usable, latest);
 
       const highlights = copy && copy.highlights && copy.highlights.length
         ? copy.highlights
         : ["See the GitHub release for this build."];
-      const title = (copy && copy.title) || latest.name || ("Cursor Usage " + version);
       document.getElementById("latest").innerHTML =
-        '<div class="badge">New · ' + escapeHtml(version) + "</div>" +
-        "<h3>" + escapeHtml(title) + "</h3>" +
-        '<p class="when">' + escapeHtml(dateLabel(latest.published_at)) + "</p>" +
+        '<div class="badge">v' + escapeHtml(version) + "</div>" +
         listHtml(highlights);
 
       const older = versions.slice(1).map(function (ver) {
         const rel = byVer[ver] || {};
         const oldCopy = notesFor(ver, authored);
-        const oldTitle = (oldCopy && oldCopy.title) || rel.name || ver;
         const oldItems = (oldCopy && oldCopy.highlights) || [];
         const oldAsset = assetFor(rel);
         const href = oldAsset ? encodeURI(oldAsset.browser_download_url) : "";
+        const oldCount = pkgDownloads(rel);
+        const countBit = oldCount
+          ? " · " + formatCount(oldCount) + (oldCount === 1 ? " download" : " downloads")
+          : "";
         const link = oldAsset
-          ? '<p class="when"><a href="' + href + '">Download ' + escapeHtml(ver) + "</a></p>"
+          ? '<p class="when"><a href="' + href + '">Download ' + escapeHtml(ver) + "</a>" +
+            escapeHtml(countBit) + "</p>"
           : "";
         return (
           '<details class="prev">' +
-            "<summary><strong>" + escapeHtml(ver) + "</strong><em>" + escapeHtml(oldTitle) + "</em></summary>" +
+            "<summary><strong>" + escapeHtml(ver) + "</strong></summary>" +
             '<div class="body">' +
-              '<p class="when">' + escapeHtml(dateLabel(rel.published_at)) + "</p>" +
-              (oldItems.length ? listHtml(oldItems) : "<p class='when'>No extra notes for this build.</p>") +
+              (oldItems.length ? listHtml(oldItems) : "") +
               link +
             "</div>" +
           "</details>"
@@ -644,8 +889,8 @@
       document.getElementById("previous").innerHTML = older;
       document.getElementById("notes-sub").textContent =
         versions.length > 1
-          ? "What shipped in " + version + ", then every release before it."
-          : "What shipped in " + version + ".";
+          ? "Highlights for this build, then earlier ones."
+          : "Highlights for this build.";
     }
 
     Promise.all([
@@ -670,15 +915,21 @@
       render(pair[0], authored, order);
     });
 
+    (function paintBars() {
+      var heights = [28, 36, 48, 32, 62, 40, 54, 70, 44, 58, 76, 50, 66, 88, 60, 72, 46, 80, 68, 56, 92, 74, 84, 64, 58];
+      var host = document.getElementById("live-bars");
+      if (!host) return;
+      host.innerHTML = heights.map(function (h, i) {
+        return '<i style="height:' + h + '%;animation-delay:' + (i * 28) + 'ms"></i>';
+      }).join("");
+    })();
+
     if (!window.matchMedia || !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       var shown = 0;
       var timer = setInterval(function () {
         shown += 1;
-        var text = shown + "%";
         var a = document.getElementById("live-pct");
-        var b = document.getElementById("menu-pct");
-        if (a) a.textContent = text;
-        if (b) b.textContent = text;
+        if (a) a.textContent = shown + "%";
         if (shown >= 18) clearInterval(timer);
       }, 40);
     }

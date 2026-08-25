@@ -33,8 +33,8 @@ from cursor_usage_menubar.breakdown import (
 from cursor_usage_menubar.formatters import dollars
 from cursor_usage_menubar.models import GroupMember, UsageSnapshot
 
-SORT_BY_OPTIONS = ("usage", "name", "cap", "recent")
-SORT_BY_LABELS = ("Usage", "Name", "Cap", "Recent")
+SORT_BY_OPTIONS = ("usage", "cursor", "name", "cap", "recent")
+SORT_BY_LABELS = ("Usage", "Cursor models", "Name", "Cap", "Recent")
 
 
 def users_layout_height(snapshot: UsageSnapshot) -> int:
@@ -68,6 +68,7 @@ def ordered_members(
     query: str = "",
     spikes_only: bool = False,
     recent_by_id: dict[int, int] | None = None,
+    cursor_by_id: dict[int, int] | None = None,
     burst_ids: frozenset[int] | None = None,
 ) -> tuple[GroupMember, ...]:
     members = list(listed_members(snapshot))
@@ -87,6 +88,15 @@ def ordered_members(
     if key == "recent":
         recent = recent_by_id or {}
         members.sort(key=lambda m: (recent.get(m.user_id, 0), m.user_id), reverse=descending)
+    elif key == "cursor":
+        shares = cursor_by_id or {}
+        known = [member for member in members if member.user_id in shares]
+        unknown = [member for member in members if member.user_id not in shares]
+        known.sort(
+            key=lambda member: (shares[member.user_id], member.user_id),
+            reverse=descending,
+        )
+        members = known + unknown
     elif key == "usage":
         with_cap = [m for m in members if m.limit_cents]
         no_cap = [m for m in members if not m.limit_cents]
@@ -113,6 +123,13 @@ def member_cap_percent(member: GroupMember) -> int | None:
     if not member.limit_cents or member.limit_cents <= 0:
         return None
     return int(round(100 * member.spend_cents / member.limit_cents))
+
+
+def cursor_usage_share(cursor_cents: int, other_cents: int) -> float | None:
+    total = max(0, int(cursor_cents)) + max(0, int(other_cents))
+    if total <= 0:
+        return None
+    return max(0, int(cursor_cents)) / total
 
 
 def member_cap_fraction(member: GroupMember) -> float:

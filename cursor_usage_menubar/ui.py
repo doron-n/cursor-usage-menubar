@@ -154,9 +154,11 @@ class GraphView(NSView):
             peak = NSTextField.alloc().initWithFrame_(
                 NSMakeRect(frame.size.width - 120, 10, 104, 16)
             )
+            daily = NSTextField.alloc().initWithFrame_(NSMakeRect(16, 10, 90, 14))
             for field, text, align, color in (
                 (first, self.series[0][0][5:], 0, theme_color(self.theme, "muted")),
                 (last, self.series[-1][0][5:], 2, theme_color(self.theme, "muted")),
+                (daily, "per day", 0, theme_color(self.theme, "muted")),
                 (peak, f"peak ${peak_cents / 100:.2f}", 2, theme_color(self.theme, "accent")),
             ):
                 field.setBezeled_(False)
@@ -198,35 +200,28 @@ class GraphView(NSView):
             y = top + plot_h * (1 - cents / peak)
             return x, y
 
-        fill = NSBezierPath.alloc().init()
-        x0, _y0 = point_at(0, self.series[0][1])
-        fill.moveToPoint_((x0, top + plot_h))
-        for index, (_day, cents) in enumerate(self.series):
-            fill.lineToPoint_(point_at(index, cents))
-        x_last, _ = point_at(count - 1, self.series[-1][1])
-        fill.lineToPoint_((x_last, top + plot_h))
-        fill.closePath()
-        theme_color(self.theme, "accent_dim").set()
-        fill.fill()
-
-        line = NSBezierPath.alloc().init()
-        line.setLineWidth_(2.4)
-        line.setLineCapStyle_(NS_ROUND_CAP)
-        line.setLineJoinStyle_(1)
-        for index, (_day, cents) in enumerate(self.series):
-            pt = point_at(index, cents)
-            if index == 0:
-                line.moveToPoint_(pt)
-            else:
-                line.lineToPoint_(pt)
+        baseline = top + plot_h
+        bar_gap = plot_w / count
+        bar_w = max(2.0, bar_gap * 0.62)
         theme_color(self.theme, "accent").set()
-        line.stroke()
+        for index, (_day, cents) in enumerate(self.series):
+            if cents <= 0:
+                continue
+            x, y = point_at(index, cents)
+            height = max(1.0, baseline - y)
+            radius = min(3.0, bar_w / 2)
+            NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
+                NSMakeRect(x - bar_w / 2, y, bar_w, height),
+                radius,
+                radius,
+            ).fill()
 
-        x, y = point_at(count - 1, self.series[-1][1])
-        dot = NSBezierPath.bezierPathWithOvalInRect_(NSMakeRect(x - 4, y - 4, 8, 8))
-        usage_tone(self.theme, None).set()
-        theme_color(self.theme, "accent").set()
-        dot.fill()
+        peak_index = max(range(count), key=lambda index: self.series[index][1])
+        x, y = point_at(peak_index, self.series[peak_index][1])
+        if self.series[peak_index][1] > 0:
+            dot = NSBezierPath.bezierPathWithOvalInRect_(NSMakeRect(x - 4, y - 4, 8, 8))
+            theme_color(self.theme, "accent").set()
+            dot.fill()
 
 
 class GlowBarView(NSView):
@@ -252,6 +247,47 @@ class GlowBarView(NSView):
         self.barColor.set()
         NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
             NSMakeRect(0, 0, width, bounds.size.height), radius, radius
+        ).fill()
+
+
+class SplitBarView(NSView):
+    def initWithFrame_fraction_cursor_other_theme_(self, frame, fraction, cursor, other, theme):
+        self = objc_super(SplitBarView, self).initWithFrame_(frame)
+        if self is None:
+            return None
+        self.fraction = max(0.0, min(1.0, float(fraction)))
+        self.cursor_cents = max(0, int(cursor))
+        self.other_cents = max(0, int(other))
+        self.theme = as_theme(theme)
+        return self
+
+    def isFlipped(self):
+        return True
+
+    def drawRect_(self, _rect):
+        bounds = self.bounds()
+        radius = bounds.size.height / 2
+        NSColor.colorWithCalibratedWhite_alpha_(1.0, 0.08).set()
+        NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(bounds, radius, radius).fill()
+        filled = bounds.size.width * self.fraction if self.fraction else 0
+        if filled <= 0:
+            return
+        filled = max(bounds.size.height, filled)
+        clip = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
+            NSMakeRect(0, 0, filled, bounds.size.height), radius, radius
+        )
+        clip.addClip()
+        total = self.cursor_cents + self.other_cents
+        if total <= 0:
+            theme_color(self.theme, "accent").set()
+            clip.fill()
+            return
+        cursor_w = filled * self.cursor_cents / total
+        theme_color(self.theme, "accent").set()
+        NSBezierPath.bezierPathWithRect_(NSMakeRect(0, 0, cursor_w, bounds.size.height)).fill()
+        theme_color(self.theme, "other").set()
+        NSBezierPath.bezierPathWithRect_(
+            NSMakeRect(cursor_w, 0, filled - cursor_w, bounds.size.height)
         ).fill()
 
 

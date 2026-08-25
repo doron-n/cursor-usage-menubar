@@ -19,16 +19,34 @@ class SetDockBadgeTest(unittest.TestCase):
         tile = Mock()
         app = Mock()
         app.dockTile.return_value = tile
-        with patch("cursor_usage_menubar.app.NSApplication") as ns:
+        with (
+            patch("cursor_usage_menubar.app.NSApplication") as ns,
+            patch("cursor_usage_menubar.app.load_prefs", return_value={"dock_badge": True}),
+        ):
             ns.sharedApplication.return_value = app
             set_dock_badge(18)
         tile.setBadgeLabel_.assert_called_once_with("18%")
+
+    def test_clears_badge_when_pref_disabled(self):
+        tile = Mock()
+        app = Mock()
+        app.dockTile.return_value = tile
+        with (
+            patch("cursor_usage_menubar.app.NSApplication") as ns,
+            patch("cursor_usage_menubar.app.load_prefs", return_value={"dock_badge": False}),
+        ):
+            ns.sharedApplication.return_value = app
+            set_dock_badge(18)
+        tile.setBadgeLabel_.assert_called_once_with(None)
 
     def test_clears_badge_when_unknown(self):
         tile = Mock()
         app = Mock()
         app.dockTile.return_value = tile
-        with patch("cursor_usage_menubar.app.NSApplication") as ns:
+        with (
+            patch("cursor_usage_menubar.app.NSApplication") as ns,
+            patch("cursor_usage_menubar.app.load_prefs", return_value={"dock_badge": True}),
+        ):
             ns.sharedApplication.return_value = app
             set_dock_badge(None)
         tile.setBadgeLabel_.assert_called_once_with(None)
@@ -98,6 +116,16 @@ class CursorUsageAppTest(unittest.TestCase):
             title="—",
             quit_button=None,
         )
+
+    def test_menu_keeps_workspace_and_settings_actions(self):
+        import inspect
+
+        source = inspect.getsource(CursorUsageApp._rebuild_info)
+        self.assertIn("Open Cursor Usage", source)
+        self.assertIn("Settings", source)
+        self.assertIn("view_settings", source)
+        self.assertNotIn("version_label", source)
+        self.assertNotIn("Open Cursor Dashboard", source)
 
     def test_registers_before_start_callback_that_pins_current_title(self):
         self.assertIn(CursorUsageApp._pin_status_item_title, events.before_start.callbacks)

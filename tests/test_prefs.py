@@ -38,6 +38,21 @@ class PrefsTest(unittest.TestCase):
             save_prefs({"theme": "nope"}, path)
             self.assertEqual(load_prefs(path)["theme"], "dark")
 
+    def test_refresh_and_dock_badge_round_trip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "prefs.json"
+            loaded = load_prefs(path)
+            self.assertEqual(loaded["refresh_seconds"], 300)
+            self.assertTrue(loaded["dock_badge"])
+            save_prefs({"refresh_seconds": 60, "dock_badge": False}, path)
+            loaded = load_prefs(path)
+            self.assertEqual(loaded["refresh_seconds"], 60)
+            self.assertFalse(loaded["dock_badge"])
+            save_prefs({"refresh_seconds": 99, "dock_badge": "nope"}, path)
+            loaded = load_prefs(path)
+            self.assertEqual(loaded["refresh_seconds"], 300)
+            self.assertTrue(loaded["dock_badge"])
+
 
 if __name__ == "__main__":
     unittest.main()

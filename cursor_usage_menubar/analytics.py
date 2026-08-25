@@ -8,6 +8,7 @@ from cursor_usage_menubar.models import GroupMember, ModelSpend, UsageEvent
 
 BURST_WINDOW_MS = 24 * 60 * 60 * 1000
 FAST_WINDOW_MS = 6 * 60 * 60 * 1000
+WEEK_MS = 7 * 24 * 60 * 60 * 1000
 MIN_BURST_CENTS = 1500
 MIN_FAST_CENTS = 800
 BURST_SHARE = 0.25
@@ -86,20 +87,23 @@ def daily_spend_series(
     cycle_end: str | None = None,
     now_ms: int | None = None,
 ) -> tuple[tuple[str, int], ...]:
+    """One bucket per calendar day. With now_ms, that is the current month through today."""
     buckets: dict[str, int] = {}
     for event in events:
         day = _day_utc(event.at_ms)
         buckets[day] = buckets.get(day, 0) + event.cents
     today = None
+    start = None
+    end = None
     if now_ms is not None:
         today = datetime.fromtimestamp(now_ms / 1000, tz=timezone.utc).date()
-    start = month_start_date(now_ms) if now_ms is not None else _parse_day(cycle_start)
-    if start is not None:
-        start = start.replace(day=1)
-    end = _parse_day(cycle_end)
-    if today is not None:
-        if end is None or end > today:
-            end = today
+        start = today.replace(day=1)
+        end = today
+    else:
+        start = _parse_day(cycle_start)
+        if start is not None:
+            start = start.replace(day=1)
+        end = _parse_day(cycle_end)
     if not buckets and start is None:
         return ()
     if start is None:
@@ -130,6 +134,26 @@ def recent_spend_cents(
         if _event_matches(event, member):
             total += event.cents
     return total
+
+
+def top_members_by_recent_spend(
+    events: tuple[UsageEvent, ...],
+    members: tuple[GroupMember, ...],
+    *,
+    now_ms: int,
+    window_ms: int = WEEK_MS,
+    limit: int = 3,
+) -> tuple[GroupMember, ...]:
+    ranked = []
+    for member in members:
+        cents = recent_spend_cents(
+            events, member, now_ms=now_ms, window_ms=window_ms
+        )
+        if cents <= 0:
+            continue
+        ranked.append((cents, member.user_id, member))
+    ranked.sort(key=lambda item: (-item[0], item[1]))
+    return tuple(member for _cents, _uid, member in ranked[:limit])
 
 
 def burst_member_ids(
@@ -220,6 +244,27 @@ def view_pool_cents(
     if from_events[0] or from_events[1]:
         return from_events
     return pool_cents(models)
+
+
+def scale_pool_cents(cursor: int, other: int, spent_cents: int | None) -> tuple[int, int]:
+    total = max(0, cursor) + max(0, other)
+    if total <= 0:
+        return (0, 0)
+    target = spent_cents if spent_cents and spent_cents > 0 else total
+    scaled_cursor = int(round(target * cursor / total))
+    return scaled_cursor, max(0, target - scaled_cursor)
+
+
+def overview_pool_cents(
+    events: tuple[UsageEvent, ...],
+    members: tuple[GroupMember, ...],
+    models: tuple[ModelSpend, ...] = (),
+    spent_cents: int | None = None,
+) -> tuple[int, int]:
+    cursor, other = pool_cents(models)
+    if cursor <= 0 and other <= 0:
+        cursor, other = members_pool_cents(events, members)
+    return scale_pool_cents(cursor, other, spent_cents)
 
 
 def burst_reason(

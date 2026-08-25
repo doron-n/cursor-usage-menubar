@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import time
 import webbrowser
 
 import rumps
@@ -8,17 +9,38 @@ from AppKit import NSApplication, NSApplicationActivationPolicyRegular
 from rumps import events
 
 from cursor_usage_menubar.branding import apply_app_icon
+from cursor_usage_menubar.roles import snapshot_lacks_admin
 from cursor_usage_menubar.breakdown import refresh_if_visible
 from cursor_usage_menubar.client import fetch_usage, load_group_models
 from cursor_usage_menubar.cursor_pricing import cursor_model_forecast, forecast_menu_row
 from cursor_usage_menubar.formatters import dock_badge, dollars, menu_title
 from cursor_usage_menubar.models import UsageSnapshot
-from cursor_usage_menubar.prefs import load_prefs, save_prefs
+from cursor_usage_menubar.prefs import DEFAULT_REFRESH_SECONDS, load_prefs
 from cursor_usage_menubar.users import member_cap_percent
 from cursor_usage_menubar.workspace import refresh_workspace_if_visible, show_workspace
 
 DASHBOARD_URL = "https://cursor.com/dashboard/usage"
 _FETCH_ERROR_STATUS = "Open Cursor to refresh your session"
+_APP: "CursorUsageApp | None" = None
+MENU_ACTIONS = (
+    "Open Cursor Usage…",
+    "Settings…",
+    "Refresh Now",
+    "Quit",
+)
+
+
+def request_refresh() -> None:
+    if _APP is not None:
+        _APP.refresh_now()
+
+
+def menu_titles(snapshot: UsageSnapshot) -> list[str]:
+    titles: list[str] = []
+    if snapshot.status and snapshot.spent_cents is None:
+        titles.append(snapshot.status)
+    titles.extend(MENU_ACTIONS)
+    return titles
 
 
 def _safe_fetch_usage() -> UsageSnapshot:
@@ -45,6 +67,8 @@ def snapshot_with_models(snapshot: UsageSnapshot) -> UsageSnapshot:
 def keep_loaded_models(
     snapshot: UsageSnapshot, previous: UsageSnapshot | None
 ) -> UsageSnapshot:
+    if snapshot_lacks_admin(snapshot):
+        return snapshot
     out = snapshot
     if not snapshot.models and previous is not None and previous.models:
         out = replace(
@@ -59,6 +83,8 @@ def keep_loaded_models(
 
 def set_dock_badge(percent: int | None) -> None:
     try:
+        if not load_prefs().get("dock_badge", True):
+            percent = None
         NSApplication.sharedApplication().dockTile().setBadgeLabel_(
             dock_badge(percent) or None
         )
@@ -91,6 +117,9 @@ def handle_dock_reopen(nsapp) -> bool:
 
     ctrl = WorkspaceController._instance
     if ctrl is not None and ctrl.snapshot is not None:
+        if snapshot_lacks_admin(ctrl.snapshot):
+            show_workspace(ctrl.snapshot, "settings")
+            return True
         show_workspace(ctrl.snapshot)
         return True
     item = getattr(nsapp, "nsstatusitem", None)
@@ -204,84 +233,23 @@ def user_usage_rows(snapshot: UsageSnapshot) -> list[str]:
 class CursorUsageApp(rumps.App):
     def __init__(self) -> None:
         super().__init__("Cursor Usage", title="—", quit_button=None)
+        global _APP
+        _APP = self
         self._snapshot: UsageSnapshot | None = None
-        self._view_callbacks: list = []
-
-    def _select_view(self, scope: str, group_id: int | None = None):
-        def _cb(_sender=None) -> None:
-            payload = {"scope": scope}
-            if scope == "group":
-                payload["group_id"] = group_id
-            save_prefs(payload)
-            self.refresh_now()
-
-        self._view_callbacks.append(_cb)
-        return _cb
-
-    def _enter_group_id(self, _sender=None) -> None:
-        current = load_prefs().get("group_id")
-        win = rumps.Window(
-            message="Billing group ID (leave empty for Global)",
-            title="Select Group",
-            default_text=str(current) if current is not None else "9485",
-            ok="Use",
-            cancel="Cancel",
-            dimensions=(260, 24),
-        )
-        response = win.run()
-        if not getattr(response, "clicked", False):
-            return
-        text = str(getattr(response, "text", "") or "").strip()
-        if not text:
-            save_prefs({"scope": "team"})
-            self.refresh_now()
-            return
-        try:
-            save_prefs({"scope": "group", "group_id": int(text)})
-        except ValueError:
-            rumps.alert("Group ID must be a number, for example 9485.")
-            return
-        self.refresh_now()
-
-    def _view_menu(self, snapshot: UsageSnapshot) -> rumps.MenuItem:
-        selected_scope = snapshot.scope if snapshot.scope in ("team", "self", "group") else "team"
-        selected_group = snapshot.group_id if selected_scope == "group" else None
-        menu = rumps.MenuItem("View")
-        self_item = rumps.MenuItem("Myself only", callback=self._select_view("self"))
-        self_item.state = 1 if selected_scope == "self" else 0
-        menu.add(self_item)
-        global_item = rumps.MenuItem("Global", callback=self._select_view("team"))
-        global_item.state = 1 if selected_scope == "team" else 0
-        menu.add(global_item)
-        menu.add(rumps.separator)
-        seen: set[int] = set()
-        for group in snapshot.groups:
-            seen.add(group.id)
-            title = f"{group.name} ({group.id})" if group.name else str(group.id)
-            item = rumps.MenuItem(title, callback=self._select_view("group", group.id))
-            item.state = 1 if selected_group == group.id else 0
-            menu.add(item)
-        if selected_group is not None and selected_group not in seen:
-            item = rumps.MenuItem(
-                str(selected_group), callback=self._select_view("group", selected_group)
-            )
-            item.state = 1
-            menu.add(item)
-        menu.add(rumps.MenuItem("Enter Group ID…", callback=self._enter_group_id))
-        return menu
+        self._last_poll = 0.0
 
     def _rebuild_info(self, snapshot: UsageSnapshot) -> None:
-        self._view_callbacks = []
         self.menu.clear()
-        for row in info_rows(snapshot):
-            item = rumps.MenuItem(row)
+        titles = menu_titles(snapshot)
+        status = titles[0] if titles and titles[0] not in MENU_ACTIONS else None
+        if status:
+            item = rumps.MenuItem(status)
             item.set_callback(None)
             self.menu.add(item)
-        self.menu.add(rumps.separator)
-        self.menu.add(self._view_menu(snapshot))
+            self.menu.add(rumps.separator)
         self.menu.add(rumps.MenuItem("Open Cursor Usage…", callback=self.view_workspace))
+        self.menu.add(rumps.MenuItem("Settings…", callback=self.view_settings))
         self.menu.add(rumps.MenuItem("Refresh Now", callback=self.refresh_now))
-        self.menu.add(rumps.MenuItem("Open Cursor Dashboard", callback=self.open_dashboard))
         self.menu.add(rumps.separator)
         self.menu.add(rumps.MenuItem("Quit", callback=self.quit_app))
 
@@ -295,30 +263,48 @@ class CursorUsageApp(rumps.App):
         refresh_if_visible(snapshot)
         refresh_workspace_if_visible(snapshot)
 
-    @rumps.timer(300)
+    @rumps.timer(60)
     def poll(self, _sender=None) -> None:
-        self._apply(_safe_fetch_usage())
+        interval = int(load_prefs().get("refresh_seconds") or DEFAULT_REFRESH_SECONDS)
+        now = time.time()
+        if self._last_poll and now - self._last_poll < max(60, interval) - 1:
+            return
+        self.refresh_now()
 
     def refresh_now(self, _sender=None) -> None:
+        self._last_poll = time.time()
         self._apply(_safe_fetch_usage())
 
     def view_users(self, _sender=None) -> None:
         snap = snapshot_with_models(self._snapshot or _safe_fetch_usage())
         self._snapshot = snap
         self._rebuild_info(snap)
+        if snapshot_lacks_admin(snap):
+            return
         show_workspace(snap, "users")
 
     def view_breakdown(self, _sender=None) -> None:
         snap = snapshot_with_models(self._snapshot or _safe_fetch_usage())
         self._snapshot = snap
         self._rebuild_info(snap)
+        if snapshot_lacks_admin(snap):
+            return
         show_workspace(snap, "models")
 
     def view_workspace(self, _sender=None) -> None:
         snap = snapshot_with_models(self._snapshot or _safe_fetch_usage())
         self._snapshot = snap
         self._rebuild_info(snap)
+        if snapshot_lacks_admin(snap):
+            show_workspace(snap, "settings")
+            return
         show_workspace(snap, "overview")
+
+    def view_settings(self, _sender=None) -> None:
+        snap = self._snapshot or _safe_fetch_usage()
+        self._snapshot = snap
+        self._rebuild_info(snap)
+        show_workspace(snap, "settings")
 
     def open_dashboard(self, _sender=None) -> None:
         webbrowser.open(DASHBOARD_URL)

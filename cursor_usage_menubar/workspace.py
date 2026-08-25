@@ -30,6 +30,7 @@ from objc import super as objc_super
 from cursor_usage_menubar.analytics import (
     BURST_WINDOW_MS,
     FAST_WINDOW_MS,
+    WEEK_MS,
     burst_member_ids,
     burst_reason,
     daily_spend_series,
@@ -38,9 +39,14 @@ from cursor_usage_menubar.analytics import (
     member_models,
     member_stats,
     recent_spend_cents,
-    view_pool_cents,
+    top_members_by_recent_spend,
+    overview_pool_cents,
+    scale_pool_cents,
 )
+from cursor_usage_menubar.app_version import current_version
 from cursor_usage_menubar.branding import app_icon
+from cursor_usage_menubar.client import load_member_events
+from cursor_usage_menubar.roles import NO_ADMIN_STATUS, snapshot_lacks_admin
 from cursor_usage_menubar.breakdown import (
     CHILD_H,
     FOOTER_H,
@@ -58,7 +64,7 @@ from cursor_usage_menubar.cursor_pricing import (
 )
 from cursor_usage_menubar.formatters import actual_usage_caption, dollars
 from cursor_usage_menubar.models import UsageSnapshot
-from cursor_usage_menubar.prefs import load_prefs, save_prefs
+from cursor_usage_menubar.prefs import REFRESH_SECONDS, load_prefs, save_prefs
 from cursor_usage_menubar.theme import appearance_name, as_theme, theme_color, usage_tone
 from cursor_usage_menubar.ui import (
     AvatarView,
@@ -66,6 +72,7 @@ from cursor_usage_menubar.ui import (
     GlowBarView,
     GraphView,
     PieView,
+    SplitBarView,
     add_symbol,
     make_card,
     money_font,
@@ -74,6 +81,7 @@ from cursor_usage_menubar.ui import (
 from cursor_usage_menubar.users import (
     SORT_BY_LABELS,
     SORT_BY_OPTIONS,
+    cursor_usage_share,
     listed_members,
     member_cap_fraction,
     member_cap_percent,
@@ -84,8 +92,15 @@ WINDOW_WIDTH = 880
 PAD = 22
 USER_ROW_H = 90
 MODEL_ROW_H = 84
-TABS = ("overview", "models", "users")
-TAB_SYMBOLS = ("chart.xyaxis.line", "cpu", "person.2")
+TABS = ("overview", "models", "users", "settings")
+TAB_SYMBOLS = ("chart.xyaxis.line", "cpu", "person.2", "gearshape")
+TAB_TITLES = ("Overview", "Models", "Users", "Settings")
+REFRESH_LABELS = {
+    60: "Every 1 minute",
+    120: "Every 2 minutes",
+    300: "Every 5 minutes",
+    600: "Every 10 minutes",
+}
 MODEL_SORTS = ("usage", "name", "tokens")
 MODEL_SORT_LABELS = ("Usage", "Name", "Tokens")
 MODEL_FILTER_LABELS = {
@@ -134,6 +149,10 @@ class WorkspaceController(NSObject):
         self.selected_user_id = None
         self._search = None
         self._keep_search_focus = False
+        self._member_event_cache = {}
+        self._view_choices: list[tuple[str, int | None]] = []
+        self._refresh_choices: list[int] = []
+        self._group_id_field = None
         return self
 
     @classmethod
@@ -166,7 +185,7 @@ class WorkspaceController(NSObject):
             NSBackingStoreBuffered,
             False,
         )
-        self.window.setTitle_("Cursor Usage")
+        self.window.setTitle_(f"Cursor Usage {current_version()}")
         self.window.setReleasedWhenClosed_(False)
         self.window.setMinSize_((700, 560))
         try:
@@ -218,6 +237,55 @@ class WorkspaceController(NSObject):
         save_prefs({"theme": self.theme})
         self._apply_appearance()
         self.render()
+
+    def viewPrefChanged_(self, sender):
+        idx = int(sender.indexOfSelectedItem())
+        if not (0 <= idx < len(self._view_choices)):
+            return
+        scope, group_id = self._view_choices[idx]
+        payload = {"scope": scope}
+        if scope == "group":
+            payload["group_id"] = group_id
+        save_prefs(payload)
+        self._request_refresh()
+
+    def refreshPrefChanged_(self, sender):
+        idx = int(sender.indexOfSelectedItem())
+        if not (0 <= idx < len(self._refresh_choices)):
+            return
+        save_prefs({"refresh_seconds": self._refresh_choices[idx]})
+
+    def dockBadgeChanged_(self, sender):
+        save_prefs({"dock_badge": int(sender.state()) == 1})
+        self._request_refresh()
+
+    def applyGroupId_(self, _sender):
+        field = self._group_id_field
+        text = str(field.stringValue() if field is not None else "").strip()
+        if not text:
+            save_prefs({"scope": "team"})
+            self._request_refresh()
+            return
+        try:
+            save_prefs({"scope": "group", "group_id": int(text)})
+        except ValueError:
+            return
+        self._request_refresh()
+
+    def openDashboard_(self, _sender):
+        import webbrowser
+
+        from cursor_usage_menubar.app import DASHBOARD_URL
+
+        webbrowser.open(DASHBOARD_URL)
+
+    @python_method
+    def _request_refresh(self):
+        from cursor_usage_menubar.app import request_refresh
+
+        request_refresh()
+        if self.snapshot is not None:
+            self.render()
 
     def toggleAuto_(self, _sender):
         self.auto_expanded = not self.auto_expanded
@@ -280,7 +348,11 @@ class WorkspaceController(NSObject):
         doc.layer().setBackgroundColor_(theme_color(self.theme, "bg").CGColor())
         y = PAD
         y = self._chrome(doc, snap, y, width)
-        if self.tab == "models":
+        if self.tab == "settings":
+            y = self._settings(doc, snap, y, width)
+        elif snapshot_lacks_admin(snap):
+            y = self._permission_block(doc, y, width)
+        elif self.tab == "models":
             y = self._models(doc, snap, y, width)
         elif self.tab == "users":
             y = self._users(doc, snap, y, width)
@@ -300,12 +372,20 @@ class WorkspaceController(NSObject):
     @python_method
     def _layout_height(self, snap, width):
         height = PAD + 128
+        if snapshot_lacks_admin(snap) and self.tab != "settings":
+            return height + 140 + FOOTER_H + PAD
         if self.tab == "overview":
             height += 188 + 72 + 36 + 228
             height += USER_ROW_H * max(
                 1,
-                len(burst_member_ids(snap.events, listed_members(snap), now_ms=_now_ms())),
+                len(
+                    top_members_by_recent_spend(
+                        snap.events, listed_members(snap), now_ms=_now_ms()
+                    )
+                ),
             )
+        elif self.tab == "settings":
+            height += 720
         elif self.tab == "models":
             models = self._visible_models(snap)
             height += 48
@@ -338,43 +418,39 @@ class WorkspaceController(NSObject):
                 pass
         doc.addSubview_(mark)
         self._label(doc, "Cursor Usage", PAD + 46, y - 2, 360, 26, size=22, bold=True)
-        toggle = NSButton.alloc().initWithFrame_(
-            NSMakeRect(width - PAD - 120, y + 6, 120, 24)
-        )
-        toggle.setButtonType_(NSButtonTypeSwitch)
-        toggle.setTitle_("Dark mode")
-        toggle.setState_(1 if self.theme == "dark" else 0)
-        toggle.setTarget_(self)
-        toggle.setAction_("themeChanged:")
-        doc.addSubview_(toggle)
         today = time.strftime("%Y-%m-%d")
         cycle = f"{month_start_date(_now_ms()).isoformat()} → {today}"
+        subtitle = (
+            f"v{current_version()} · Admin access required"
+            if snapshot_lacks_admin(snap)
+            else f"v{current_version()} · {snap.view_label()} · {cycle}"
+        )
         self._label(
             doc,
-            f"{snap.view_label()} · {cycle}",
+            subtitle,
             PAD + 46,
             y + 24,
-            width - PAD * 2 - 180,
+            width - PAD * 2 - 40,
             16,
             size=12,
             secondary=True,
         )
         tabs = NSSegmentedControl.alloc().initWithFrame_(
-            NSMakeRect(PAD, y + 52, 420, 32)
+            NSMakeRect(PAD, y + 52, 540, 32)
         )
-        tabs.setSegmentCount_(3)
+        tabs.setSegmentCount_(len(TABS))
         try:
             from AppKit import NSSegmentSwitchTrackingSelectOne
 
             tabs.setTrackingMode_(NSSegmentSwitchTrackingSelectOne)
         except Exception:
             tabs.setTrackingMode_(0)
-        for index, title in enumerate(("Overview", "Models", "Users")):
+        for index, title in enumerate(TAB_TITLES):
             image = symbol_image(TAB_SYMBOLS[index], 13)
             if image is not None:
                 tabs.setImage_forSegment_(image, index)
             tabs.setLabel_forSegment_(title, index)
-            tabs.setWidth_forSegment_(136, index)
+            tabs.setWidth_forSegment_(128, index)
         tabs.setSelectedSegment_(TABS.index(self.tab) if self.tab in TABS else 0)
         tabs.setTarget_(self)
         tabs.setAction_("tabChanged:")
@@ -382,14 +458,216 @@ class WorkspaceController(NSObject):
         return y + 96
 
     @python_method
+    def _permission_block(self, doc, y, width):
+        card = make_card(NSMakeRect(PAD, y, width - PAD * 2, 120), self.theme)
+        self._label(card, "No permission", 20, 18, width - PAD * 2 - 40, 24, size=18, bold=True)
+        self._label(
+            card,
+            NO_ADMIN_STATUS,
+            20,
+            50,
+            width - PAD * 2 - 40,
+            52,
+            size=13,
+            secondary=True,
+        )
+        doc.addSubview_(card)
+        return y + 140
+
+    @python_method
+    def _settings(self, doc, snap, y, width):
+        prefs = load_prefs()
+        account = snap.email or "Unknown account"
+        if snap.team_name:
+            account = f"{account} · {snap.team_name}"
+        y = self._section(doc, "ACCOUNT", y, "person.crop.circle")
+        y = self._settings_card(
+            doc,
+            y,
+            width,
+            92,
+            (
+                (account, False),
+                (f"{snap.plan_name} · {snap.view_label()}", True),
+                (f"Version {current_version()}", True),
+            ),
+        )
+        y = self._section(doc, "DATA VIEW", y, "rectangle.3.group")
+        y = self._view_picker(doc, snap, y, width)
+        y = self._section(doc, "APPEARANCE", y, "circle.lefthalf.filled")
+        y = self._settings_switch(
+            doc,
+            y,
+            width,
+            "Dark mode",
+            self.theme == "dark",
+            "themeChanged:",
+        )
+        y = self._section(doc, "REFRESH", y, "arrow.clockwise")
+        y = self._refresh_picker(doc, prefs, y, width)
+        y = self._settings_switch(
+            doc,
+            y,
+            width,
+            "Show usage percent on the Dock icon",
+            bool(prefs.get("dock_badge", True)),
+            "dockBadgeChanged:",
+        )
+        y = self._section(doc, "LINKS", y, "safari")
+        button = NSButton.alloc().initWithFrame_(
+            NSMakeRect(PAD, y, 220, 28)
+        )
+        button.setTitle_("Open Cursor Dashboard")
+        button.setBezelStyle_(1)
+        button.setTarget_(self)
+        button.setAction_("openDashboard:")
+        doc.addSubview_(button)
+        y += 44
+        self._label(
+            doc,
+            "The menu bar stays at the usage percent. Spend, users, and models live in this window.",
+            PAD,
+            y,
+            width - PAD * 2,
+            32,
+            size=12,
+            secondary=True,
+        )
+        return y + 40
+
+    @python_method
+    def _settings_card(self, doc, y, width, height, lines):
+        card = make_card(NSMakeRect(PAD, y, width - PAD * 2, height), self.theme, 16)
+        top = 16
+        for text, secondary in lines:
+            self._label(
+                card,
+                text,
+                18,
+                top,
+                width - PAD * 2 - 36,
+                20,
+                size=13,
+                bold=not secondary,
+                secondary=secondary,
+            )
+            top += 22
+        doc.addSubview_(card)
+        return y + height + 16
+
+    @python_method
+    def _settings_switch(self, doc, y, width, title, on, action):
+        card = make_card(NSMakeRect(PAD, y, width - PAD * 2, 48), self.theme, 16)
+        toggle = NSButton.alloc().initWithFrame_(NSMakeRect(16, 12, width - PAD * 2 - 32, 24))
+        toggle.setButtonType_(NSButtonTypeSwitch)
+        toggle.setTitle_(title)
+        toggle.setState_(1 if on else 0)
+        toggle.setTarget_(self)
+        toggle.setAction_(action)
+        card.addSubview_(toggle)
+        doc.addSubview_(card)
+        return y + 62
+
+    @python_method
+    def _view_picker(self, doc, snap, y, width):
+        card = make_card(NSMakeRect(PAD, y, width - PAD * 2, 118), self.theme, 16)
+        self._label(card, "Which spend this window shows", 18, 12, 400, 16, size=12, secondary=True)
+        choices: list[tuple[str, int | None]] = [("self", None), ("team", None)]
+        titles = ["Myself only", "Global"]
+        selected = 0
+        scope = snap.scope if snap.scope in ("self", "team", "group") else "self"
+        group_id = snap.group_id if scope == "group" else None
+        if scope == "team":
+            selected = 1
+        seen: set[int] = set()
+        for group in snap.groups:
+            seen.add(group.id)
+            titles.append(f"{group.name} ({group.id})" if group.name else str(group.id))
+            choices.append(("group", group.id))
+            if scope == "group" and group_id == group.id:
+                selected = len(choices) - 1
+        if group_id is not None and group_id not in seen:
+            titles.append(str(group_id))
+            choices.append(("group", group_id))
+            selected = len(choices) - 1
+        self._view_choices = choices
+        popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
+            NSMakeRect(18, 34, 280, 26), False
+        )
+        popup.addItemsWithTitles_(titles)
+        popup.selectItemAtIndex_(selected)
+        popup.setTarget_(self)
+        popup.setAction_("viewPrefChanged:")
+        card.addSubview_(popup)
+        field = NSTextField.alloc().initWithFrame_(NSMakeRect(310, 36, 140, 22))
+        if group_id is not None:
+            field.setStringValue_(str(group_id))
+        try:
+            field.setPlaceholderString_("Group ID")
+        except Exception:
+            pass
+        card.addSubview_(field)
+        self._group_id_field = field
+        apply = NSButton.alloc().initWithFrame_(NSMakeRect(458, 34, 72, 26))
+        apply.setTitle_("Use ID")
+        apply.setBezelStyle_(1)
+        apply.setTarget_(self)
+        apply.setAction_("applyGroupId:")
+        card.addSubview_(apply)
+        self._label(
+            card,
+            "Myself, Global, or a billing group. Use ID if the group is missing from the list.",
+            18,
+            72,
+            width - PAD * 2 - 36,
+            32,
+            size=11,
+            secondary=True,
+        )
+        doc.addSubview_(card)
+        return y + 134
+
+    @python_method
+    def _refresh_picker(self, doc, prefs, y, width):
+        card = make_card(NSMakeRect(PAD, y, width - PAD * 2, 78), self.theme, 16)
+        self._label(card, "How often the menu percent updates", 18, 12, 400, 16, size=12, secondary=True)
+        current = int(prefs.get("refresh_seconds") or 300)
+        self._refresh_choices = list(REFRESH_SECONDS)
+        popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
+            NSMakeRect(18, 34, 220, 26), False
+        )
+        popup.addItemsWithTitles_([REFRESH_LABELS[sec] for sec in REFRESH_SECONDS])
+        if current in self._refresh_choices:
+            popup.selectItemAtIndex_(self._refresh_choices.index(current))
+        popup.setTarget_(self)
+        popup.setAction_("refreshPrefChanged:")
+        card.addSubview_(popup)
+        doc.addSubview_(card)
+        return y + 94
+
+    @python_method
     def _overview(self, doc, snap, y, width):
-        y = self._hero(doc, snap, y, width, users_count=len(listed_members(snap)))
-        y = self._section(doc, "SPEND THIS CYCLE", y, "chart.xyaxis.line")
+        members = listed_members(snap)
+        y = self._hero(
+            doc,
+            snap,
+            y,
+            width,
+            users_count=len(members),
+            pool=overview_pool_cents(
+                snap.events,
+                members,
+                snap.models,
+                spent_cents=snap.spent_cents,
+            ),
+        )
+        y = self._section(doc, "SPEND THIS MONTH", y, "chart.xyaxis.line")
+        now_ms = _now_ms()
         series = daily_spend_series(
             snap.events,
             cycle_start=snap.cycle_start,
             cycle_end=snap.cycle_end,
-            now_ms=_now_ms(),
+            now_ms=now_ms,
         )
         graph = GraphView.alloc().initWithFrame_series_theme_(
             NSMakeRect(PAD, y, width - PAD * 2, 200), series, self.theme
@@ -408,12 +686,12 @@ class WorkspaceController(NSObject):
                 secondary=True,
             )
         members = listed_members(snap)
-        flagged = burst_member_ids(snap.events, members, now_ms=_now_ms())
-        y = self._section(doc, "SPEND SPIKES", y, "flame.fill")
-        if not flagged:
+        top = top_members_by_recent_spend(snap.events, members, now_ms=now_ms)
+        y = self._section(doc, "SPEND SPIKES · LAST 7 DAYS", y, "flame.fill")
+        if not top:
             self._label(
                 doc,
-                "No one is burning budget unusually fast in the last 6–24 hours.",
+                "No team spend in the last 7 days.",
                 PAD,
                 y,
                 width - PAD * 2,
@@ -422,12 +700,21 @@ class WorkspaceController(NSObject):
                 secondary=True,
             )
             return y + 28
-        by_id = {member.user_id: member for member in members}
-        for user_id in flagged:
-            member = by_id.get(user_id)
-            if member is None:
-                continue
-            y = self._user_row(doc, member, y, width, spike=True, clickable=True)
+        lead = recent_spend_cents(snap.events, top[0], now_ms=now_ms, window_ms=WEEK_MS) or 1
+        for member in top:
+            week = recent_spend_cents(
+                snap.events, member, now_ms=now_ms, window_ms=WEEK_MS
+            )
+            y = self._user_row(
+                doc,
+                member,
+                y,
+                width,
+                amount_cents=week,
+                amount_suffix="7 days",
+                bar_fraction=week / lead,
+                clickable=True,
+            )
         return y
 
     @python_method
@@ -485,7 +772,15 @@ class WorkspaceController(NSObject):
         y = self._toolbar(doc, y, width, query=self.user_query, extra="users")
         members = self._visible_users(snap)
         y = self._pool_pie(
-            doc, view_pool_cents(snap.events, members, snap.models), y, width
+            doc,
+            overview_pool_cents(
+                snap.events,
+                listed_members(snap),
+                snap.models,
+                spent_cents=snap.spent_cents,
+            ),
+            y,
+            width,
         )
         if not members:
             self._label(
@@ -502,6 +797,7 @@ class WorkspaceController(NSObject):
         now_ms = _now_ms()
         flagged = burst_member_ids(snap.events, members, now_ms=now_ms)
         for member in members:
+            cursor, other = pool_cents(member_models(snap.events, member))
             y = self._user_row(
                 doc,
                 member,
@@ -510,6 +806,7 @@ class WorkspaceController(NSObject):
                 spike=member.user_id in flagged,
                 now_ms=now_ms,
                 clickable=True,
+                pool=(cursor, other),
             )
         return y
 
@@ -527,6 +824,12 @@ class WorkspaceController(NSObject):
             member.user_id: recent_spend_cents(snap.events, member, now_ms=now_ms)
             for member in members
         }
+        cursor = {}
+        for member in members:
+            cursor_cents, other_cents = pool_cents(member_models(snap.events, member))
+            share = cursor_usage_share(cursor_cents, other_cents)
+            if share is not None:
+                cursor[member.user_id] = share
         flagged = burst_member_ids(snap.events, members, now_ms=now_ms)
         return ordered_members(
             snap,
@@ -535,6 +838,7 @@ class WorkspaceController(NSObject):
             query=self.user_query,
             spikes_only=self.spikes_only,
             recent_by_id=recent,
+            cursor_by_id=cursor,
             burst_ids=flagged,
         )
 
@@ -548,9 +852,20 @@ class WorkspaceController(NSObject):
         return None
 
     @python_method
+    def _events_for_member(self, snap, member):
+        key = (member.user_id, snap.cycle_start, snap.cycle_end)
+        cached = self._member_event_cache.get(key)
+        if cached is not None:
+            return cached
+        events = load_member_events(member, snap)
+        self._member_event_cache[key] = events
+        return events
+
+    @python_method
     def _user_detail(self, doc, snap, member, y, width):
         now_ms = _now_ms()
-        stats = member_stats(snap.events, member)
+        events = self._events_for_member(snap, member)
+        stats = member_stats(events, member)
         models = stats["models"]
         back = NSButton.alloc().initWithFrame_(NSMakeRect(PAD, y, 90, 28))
         back.setTitle_("← Users")
@@ -584,15 +899,15 @@ class WorkspaceController(NSObject):
         )
         pct = member_cap_percent(member)
         last6 = recent_spend_cents(
-            snap.events, member, now_ms=now_ms, window_ms=FAST_WINDOW_MS
+            events, member, now_ms=now_ms, window_ms=FAST_WINDOW_MS
         )
         last24 = recent_spend_cents(
-            snap.events, member, now_ms=now_ms, window_ms=BURST_WINDOW_MS
+            events, member, now_ms=now_ms, window_ms=BURST_WINDOW_MS
         )
         share = ""
         if snap.spent_cents:
             share = f"{int(round(100 * member.spend_cents / snap.spent_cents))}% of this view"
-        spike = burst_reason(snap.events, member, now_ms=now_ms)
+        spike = burst_reason(events, member, now_ms=now_ms)
         hero = make_card(NSMakeRect(PAD, y, width - PAD * 2, 156), self.theme)
         gauge = GaugeView.alloc().initWithFrame_percent_theme_(
             NSMakeRect(12, 10, 136, 136), pct, self.theme
@@ -622,7 +937,10 @@ class WorkspaceController(NSObject):
         doc.addSubview_(hero)
         y += 168
         y = self._top_models(doc, stats["top_models"], y, width)
-        y = self._pool_pie(doc, stats.get("pool") or pool_cents(models), y, width)
+        pool = stats.get("pool") or pool_cents(models)
+        y = self._pool_pie(
+            doc, scale_pool_cents(pool[0], pool[1], member.spend_cents), y, width
+        )
         extras = [
             ("Last 6h", dollars(last6)),
             ("Requests", str(stats["requests"])),
@@ -643,9 +961,9 @@ class WorkspaceController(NSObject):
         if spike:
             self._label(doc, spike, PAD, y, width - PAD * 2, 18, size=13, color=theme_color(self.theme, "spike"))
             y += 26
-        y = self._section(doc, "SPEND THIS CYCLE", y, "chart.xyaxis.line")
+        y = self._section(doc, "SPEND THIS MONTH", y, "chart.xyaxis.line")
         series = daily_spend_series(
-            member_events(snap.events, member),
+            member_events(events, member),
             cycle_start=snap.cycle_start,
             cycle_end=snap.cycle_end,
             now_ms=now_ms,
@@ -724,6 +1042,46 @@ class WorkspaceController(NSObject):
         return y + 130
 
     @python_method
+    def _pool_pie_card(self, doc, pool, x, y, width, height):
+        cursor, other = pool
+        card = make_card(NSMakeRect(x, y, width, height), self.theme, 20)
+        add_symbol(card, "chart.pie", 16, 14, 13, theme_color(self.theme, "accent"))
+        self._label(card, "CURSOR VS OTHER", 36, 12, width - 52, 16, size=11, bold=True, secondary=True)
+        pie = PieView.alloc().initWithFrame_cursor_other_theme_(
+            NSMakeRect(14, 40, 98, 98), cursor, other, self.theme
+        )
+        card.addSubview_(pie)
+        total = cursor + other
+        cursor_pct = int(round(100 * cursor / total)) if total else 0
+        other_pct = 100 - cursor_pct if total else 0
+        legend_x = 124
+        add_symbol(card, "circle.fill", legend_x, 52, 10, theme_color(self.theme, "accent"))
+        self._label(card, "Cursor models", legend_x + 16, 48, width - legend_x - 28, 18, size=13, bold=True)
+        self._label(
+            card,
+            f"{dollars(cursor)} · {cursor_pct}%",
+            legend_x + 16,
+            66,
+            width - legend_x - 28,
+            16,
+            size=12,
+            secondary=True,
+        )
+        add_symbol(card, "circle.fill", legend_x, 100, 10, theme_color(self.theme, "other"))
+        self._label(card, "Other models", legend_x + 16, 96, width - legend_x - 28, 18, size=13, bold=True)
+        self._label(
+            card,
+            f"{dollars(other)} · {other_pct}%",
+            legend_x + 16,
+            114,
+            width - legend_x - 28,
+            16,
+            size=12,
+            secondary=True,
+        )
+        doc.addSubview_(card)
+
+    @python_method
     def _top_models(self, doc, models, y, width):
         y = self._section(doc, "TOP 3 MODELS", y, "cpu")
         card_w = width - PAD * 2
@@ -760,8 +1118,15 @@ class WorkspaceController(NSObject):
         return y + 86
 
     @python_method
-    def _hero(self, doc, snap, y, width, users_count=None):
-        card_w = width - PAD * 2
+    def _hero(self, doc, snap, y, width, users_count=None, pool=None):
+        inner = width - PAD * 2
+        gap = 12
+        pie_w = 0
+        if pool is not None:
+            pie_w = max(300, min(348, int(inner * 0.42)))
+            if pie_w + 292 + gap > inner:
+                pie_w = max(280, inner - 292 - gap)
+        card_w = inner - pie_w - (gap if pie_w else 0)
         card = make_card(NSMakeRect(PAD, y, card_w, 168), self.theme, 20)
         gauge = GaugeView.alloc().initWithFrame_percent_theme_(
             NSMakeRect(14, 16, 136, 136), snap.percent, self.theme
@@ -792,9 +1157,11 @@ class WorkspaceController(NSObject):
                 value,
             )
         doc.addSubview_(card)
+        if pool is not None:
+            self._pool_pie_card(doc, pool, PAD + card_w + gap, y, pie_w, 168)
         y += 180
         caption = actual_usage_caption(snap.percent, users_count, scope=snap.scope)
-        self._label(doc, caption, PAD + 4, y - 8, card_w, 16, size=11, secondary=True)
+        self._label(doc, caption, PAD + 4, y - 8, inner, 16, size=11, secondary=True)
         forecast = cursor_model_forecast(snap)
         if forecast is None:
             title = "If you'd used only Cursor models · —"
@@ -805,12 +1172,12 @@ class WorkspaceController(NSObject):
             fraction = 0.0 if forecast.percent is None else min(1.0, forecast.percent / 100.0)
         y = self._section(doc, title.upper() if len(title) < 40 else title, y + 6, "sparkles")
         bar = GlowBarView.alloc().initWithFrame_fraction_color_(
-            NSMakeRect(PAD, y, card_w, 10),
+            NSMakeRect(PAD, y, inner, 10),
             fraction,
             theme_color(self.theme, "accent"),
         )
         doc.addSubview_(bar)
-        self._label(doc, sub, PAD, y + 16, card_w, 16, size=11, secondary=True)
+        self._label(doc, sub, PAD, y + 16, inner, 16, size=11, secondary=True)
         return y + 42
 
     @python_method
@@ -889,7 +1256,7 @@ class WorkspaceController(NSObject):
             spike.setAction_("spikeFilterChanged:")
             doc.addSubview_(spike)
             by = NSPopUpButton.alloc().initWithFrame_pullsDown_(
-                NSMakeRect(width - PAD - 210, y, 110, 26), False
+                NSMakeRect(width - PAD - 248, y, 148, 26), False
             )
             by.addItemsWithTitles_(list(SORT_BY_LABELS))
             by.selectItemAtIndex_(
@@ -950,14 +1317,36 @@ class WorkspaceController(NSObject):
         return y + (CHILD_H if nested else MODEL_ROW_H)
 
     @python_method
-    def _user_row(self, doc, member, y, width, spike=False, now_ms=None, clickable=False):
+    def _user_row(
+        self,
+        doc,
+        member,
+        y,
+        width,
+        spike=False,
+        now_ms=None,
+        clickable=False,
+        amount_cents=None,
+        amount_suffix=None,
+        bar_fraction=None,
+        pool=None,
+    ):
         row_w = width - PAD * 2
         card = make_card(NSMakeRect(PAD, y, row_w, USER_ROW_H - 10), self.theme, 16)
         name = member.name or member.email or str(member.user_id)
-        frac = member_cap_fraction(member)
+        frac = (
+            max(0.0, min(1.0, float(bar_fraction)))
+            if bar_fraction is not None
+            else member_cap_fraction(member)
+        )
         pct = member_cap_percent(member)
-        spent = dollars(member.spend_cents)
-        amount = f"{spent} · {pct}%" if pct is not None else spent
+        spent = dollars(member.spend_cents if amount_cents is None else amount_cents)
+        if amount_suffix:
+            amount = f"{spent} · {amount_suffix}"
+        elif pct is not None:
+            amount = f"{spent} · {pct}%"
+        else:
+            amount = spent
         avatar = AvatarView.alloc().initWithFrame_name_color_(
             NSMakeRect(14, 22, 42, 42), name, _color_for(name)
         )
@@ -977,11 +1366,17 @@ class WorkspaceController(NSObject):
                 size=11,
                 color=theme_color(self.theme, "spike"),
             )
-        bar = GlowBarView.alloc().initWithFrame_fraction_color_(
-            NSMakeRect(68, 36, row_w - 92, 8),
-            frac,
-            theme_color(self.theme, "spike") if spike else usage_tone(self.theme, pct),
-        )
+        bar_frame = NSMakeRect(68, 36, row_w - 92, 8)
+        if pool is not None and (pool[0] > 0 or pool[1] > 0):
+            bar = SplitBarView.alloc().initWithFrame_fraction_cursor_other_theme_(
+                bar_frame, frac, pool[0], pool[1], self.theme
+            )
+        else:
+            bar = GlowBarView.alloc().initWithFrame_fraction_color_(
+                bar_frame,
+                frac,
+                theme_color(self.theme, "spike") if spike else usage_tone(self.theme, pct),
+            )
         card.addSubview_(bar)
         detail = member.email or f"User {member.user_id}"
         if member.limit_cents:
@@ -1003,7 +1398,7 @@ class WorkspaceController(NSObject):
         add_symbol(doc, "info.circle", PAD, y + 12, 12, theme_color(self.theme, "muted"))
         self._label(
             doc,
-            "Unofficial Cursor APIs — they can change or break without notice.",
+            f"v{current_version()} · Unofficial Cursor APIs — they can change or break without notice.",
             PAD + 18,
             y + 8,
             width - PAD * 2 - 18,

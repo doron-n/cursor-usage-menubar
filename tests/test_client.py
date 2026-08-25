@@ -17,6 +17,7 @@ from cursor_usage_menubar.client import (
     find_member_id,
     json_request,
     load_group_models,
+    load_member_events,
     parse_groups,
 )
 from cursor_usage_menubar.models import Session
@@ -117,6 +118,7 @@ class ClientTest(unittest.TestCase):
             team_id=7,
             team_name="Acme",
             plan_hint="enterprise",
+            team_role="admin",
         )
         calls = []
 
@@ -159,6 +161,124 @@ class ClientTest(unittest.TestCase):
 
         self.assertFalse(hasattr(client_mod, "_SESSION"))
         self.assertFalse(hasattr(client_mod, "access_token"))
+
+    def test_falls_back_to_cursor_dashboard_when_api2_is_unreachable(self):
+        session = Session(
+            access_token="tok",
+            sub="user",
+            email="ada@example.com",
+            team_id=7,
+            team_name="Acme",
+            plan_hint="enterprise",
+            team_role="admin",
+        )
+
+        def fake_json_request(method, url, *, token=None, cookie=None, body=None):
+            if "api2.cursor.sh" in url:
+                return None
+            if url.endswith("usage-summary"):
+                return {
+                    "individualUsage": {
+                        "overall": {"used": 500, "limit": 1000, "remaining": 500}
+                    }
+                }
+            if url.endswith("get-aggregated-usage-events"):
+                return {
+                    "aggregations": [
+                        {
+                            "modelIntent": "grok-4.5",
+                            "totalCents": 500,
+                            "inputTokens": 1,
+                            "outputTokens": 1,
+                        }
+                    ],
+                    "totalCostCents": 500,
+                }
+            if url.endswith("get-filtered-usage-events"):
+                return {"usageEventsDisplay": []}
+            if url.endswith("get-plan-info"):
+                return {"planName": "Cursor Business"}
+            if url.endswith("get-current-period-usage"):
+                return {}
+            if url.endswith("get-team-groups"):
+                return {"groups": []}
+            return None
+
+        with (
+            patch("cursor_usage_menubar.client.read_session", return_value=session),
+            patch("cursor_usage_menubar.client.json_request", fake_json_request),
+        ):
+            snap = fetch_usage()
+        self.assertEqual(snap.spent_cents, 500)
+        self.assertEqual(snap.percent, 50)
+        self.assertEqual(snap.plan_name, "Cursor Business")
+        self.assertEqual({m.label: m.total_cents for m in snap.models}, {"Grok 4.5": 500})
+        self.assertIsNone(snap.status)
+
+    def test_member_role_is_blocked_before_usage_fetch(self):
+        from cursor_usage_menubar.roles import NO_ADMIN_STATUS
+
+        session = Session(
+            access_token="tok",
+            sub="user",
+            email="ada@example.com",
+            team_id=7,
+            team_name="Acme",
+            plan_hint="enterprise",
+            team_role="member",
+        )
+        calls = []
+
+        def fake_json_request(method, url, *, token=None, cookie=None, body=None):
+            calls.append(url)
+            if url.endswith("GetTeamMembers") or url.endswith("get-team-members"):
+                return {
+                    "teamMembers": [
+                        {"email": "ada@example.com", "role": "member"},
+                    ]
+                }
+            raise AssertionError(f"blocked user must not call {url}")
+
+        with (
+            patch("cursor_usage_menubar.client.read_session", return_value=session),
+            patch("cursor_usage_menubar.client.json_request", fake_json_request),
+        ):
+            snap = fetch_usage()
+        self.assertEqual(snap.status, NO_ADMIN_STATUS)
+        self.assertIsNone(snap.spent_cents)
+        self.assertFalse(any("usage-summary" in url for url in calls))
+
+    def test_cached_admin_role_is_enough_when_members_api_fails(self):
+        session = Session(
+            access_token="tok",
+            sub="user",
+            email="ada@example.com",
+            team_id=7,
+            team_name="Acme",
+            plan_hint="enterprise",
+            team_role="owner",
+        )
+
+        def fake_json_request(method, url, *, token=None, cookie=None, body=None):
+            if "api2.cursor.sh" in url:
+                return None
+            if url.endswith("usage-summary"):
+                return {
+                    "individualUsage": {
+                        "overall": {"used": 500, "limit": 1000, "remaining": 500}
+                    }
+                }
+            if url.endswith("GetPlanInfo") or url.endswith("get-plan-info"):
+                return {"planName": "Enterprise"}
+            return {}
+
+        with (
+            patch("cursor_usage_menubar.client.read_session", return_value=session),
+            patch("cursor_usage_menubar.client.json_request", fake_json_request),
+        ):
+            snap = fetch_usage()
+        self.assertIsNone(snap.status)
+        self.assertEqual(snap.spent_cents, 500)
 
     def test_no_session_returns_status(self):
         with patch("cursor_usage_menubar.client.read_session", return_value=None):
@@ -236,6 +356,7 @@ class ClientTest(unittest.TestCase):
             team_id=7,
             team_name="Acme",
             plan_hint="enterprise",
+            team_role="admin",
         )
         bodies = []
 
@@ -321,6 +442,7 @@ class ClientTest(unittest.TestCase):
             team_id=7,
             team_name="Acme",
             plan_hint="enterprise",
+            team_role="admin",
         )
         snap = UsageSnapshot(
             email="ada@example.com",
@@ -391,6 +513,7 @@ class ClientTest(unittest.TestCase):
             team_id=7,
             team_name="Acme",
             plan_hint="enterprise",
+            team_role="admin",
         )
         bodies = []
 
@@ -516,6 +639,39 @@ class FilteredEventsFetchTest(unittest.TestCase):
         self.assertIsInstance(calls[0]["startDate"], str)
         self.assertEqual(len(payload["usageEventsDisplay"]), 3)
 
+    def test_pages_cursor_dashboard_when_api2_is_unreachable(self):
+        calls = []
+
+        def fake_json_request(method, url, *, token=None, cookie=None, body=None):
+            calls.append(url)
+            if "api2.cursor.sh" in url:
+                return None
+            if url.endswith("get-filtered-usage-events") and body["page"] == 1:
+                return {
+                    "totalUsageEventsCount": 2,
+                    "usageEventsDisplay": [
+                        {"timestamp": "1", "chargedCents": 100, "model": "grok-4.5"},
+                    ],
+                }
+            if url.endswith("get-filtered-usage-events"):
+                return {
+                    "totalUsageEventsCount": 2,
+                    "usageEventsDisplay": [
+                        {"timestamp": "2", "chargedCents": 200, "model": "sonnet"},
+                    ],
+                }
+            return None
+
+        with patch("cursor_usage_menubar.client.json_request", fake_json_request):
+            payload = fetch_filtered_usage_events(
+                token="tok",
+                cookie="WorkosCursorSessionToken=x",
+                base_body={"teamId": 7},
+                page_size=1,
+            )
+        self.assertEqual(len(payload["usageEventsDisplay"]), 2)
+        self.assertTrue(any(url.endswith("get-filtered-usage-events") for url in calls))
+
     def test_fetch_usage_sends_string_start_date(self):
         session = Session(
             access_token="tok",
@@ -524,6 +680,7 @@ class FilteredEventsFetchTest(unittest.TestCase):
             team_id=7,
             team_name="Acme",
             plan_hint="enterprise",
+            team_role="admin",
         )
         bodies = []
 
@@ -553,6 +710,64 @@ class FilteredEventsFetchTest(unittest.TestCase):
         self.assertTrue(filtered)
         self.assertIsInstance(filtered[0]["startDate"], str)
         self.assertTrue(filtered[0]["startDate"].isdigit())
+
+    def test_load_member_events_fetches_user_scoped_events_when_team_window_misses(self):
+        from cursor_usage_menubar.models import GroupMember, UsageSnapshot
+
+        session = Session(
+            access_token="tok",
+            sub="user",
+            email="ada@example.com",
+            team_id=7,
+            team_name="Acme",
+            plan_hint="enterprise",
+            team_role="admin",
+        )
+        member = GroupMember(343986627, "pat@x.com", "Pat", 22379, 50000)
+        snap = UsageSnapshot(
+            email="ada@example.com",
+            team_name="Acme",
+            plan_name="Enterprise",
+            spent_cents=1000,
+            limit_cents=5000,
+            remaining_cents=4000,
+            percent=20,
+            cycle_start="2026-08-01T00:00:00.000Z",
+            cycle_end="2026-09-01T00:00:00.000Z",
+            models=(),
+            status=None,
+            top_model=None,
+            events=(),
+        )
+        bodies = []
+
+        def fake_json_request(method, url, *, token=None, cookie=None, body=None):
+            bodies.append((url, body))
+            if url.endswith("GetFilteredUsageEvents") or url.endswith(
+                "get-filtered-usage-events"
+            ):
+                return {
+                    "usageEventsDisplay": [
+                        {
+                            "timestamp": "1777000000000",
+                            "owningUser": "343986627",
+                            "chargedCents": 900,
+                            "model": "composer-2",
+                        }
+                    ]
+                }
+            return None
+
+        with (
+            patch("cursor_usage_menubar.client.read_session", return_value=session),
+            patch("cursor_usage_menubar.client.json_request", fake_json_request),
+        ):
+            events = load_member_events(member, snap)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].user_id, 343986627)
+        self.assertEqual(events[0].model, "composer-2")
+        scoped = [body for url, body in bodies if body and body.get("userId") == 343986627]
+        self.assertTrue(scoped)
 
 
 if __name__ == "__main__":

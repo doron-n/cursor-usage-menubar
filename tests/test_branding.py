@@ -25,7 +25,13 @@ class BrandingTest(unittest.TestCase):
 class UiViewsTest(unittest.TestCase):
     def test_gauge_and_graph_construct(self):
         from AppKit import NSMakeRect
-        from cursor_usage_menubar.ui import AvatarView, GaugeView, GraphView, PieView
+        from cursor_usage_menubar.ui import (
+            AvatarView,
+            GaugeView,
+            GraphView,
+            PieView,
+            SplitBarView,
+        )
 
         gauge = GaugeView.alloc().initWithFrame_percent_theme_(
             NSMakeRect(0, 0, 120, 120), 76, "dark"
@@ -44,6 +50,12 @@ class UiViewsTest(unittest.TestCase):
         )
         self.assertEqual(pie.cursor_cents, 700)
         self.assertEqual(pie.other_cents, 300)
+        split = SplitBarView.alloc().initWithFrame_fraction_cursor_other_theme_(
+            NSMakeRect(0, 0, 120, 8), 0.5, 700, 300, "dark"
+        )
+        self.assertEqual(split.cursor_cents, 700)
+        self.assertEqual(split.other_cents, 300)
+        self.assertAlmostEqual(split.fraction, 0.5)
 
 
 if __name__ == "__main__":

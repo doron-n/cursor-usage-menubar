@@ -12,14 +12,36 @@ from datetime import datetime, timezone
 
 import certifi
 
-from cursor_usage_menubar.analytics import month_start_date, parse_events
+from cursor_usage_menubar.analytics import member_events, month_start_date, parse_events
 from cursor_usage_menubar.auth import read_session, session_cookie
 from cursor_usage_menubar.merge import aggregations_from_filtered, merge_snapshot
-from cursor_usage_menubar.models import BillingGroup, GroupMember, UsageSnapshot
+from cursor_usage_menubar.models import (
+    BillingGroup,
+    GroupMember,
+    Session,
+    UsageEvent,
+    UsageSnapshot,
+)
+from cursor_usage_menubar.roles import (
+    NO_ADMIN_STATUS,
+    extract_role,
+    is_admin_role,
+    member_role_for_email,
+)
 
 USAGE_SUMMARY_URL = "https://cursor.com/api/usage-summary"
 API2 = "https://api2.cursor.sh/aiserver.v1.DashboardService"
+DASHBOARD = "https://cursor.com/api/dashboard"
 _TIMEOUT = 8
+_DASHBOARD_PATHS = {
+    "GetAggregatedUsageEvents": "get-aggregated-usage-events",
+    "GetFilteredUsageEvents": "get-filtered-usage-events",
+    "GetCurrentPeriodUsage": "get-current-period-usage",
+    "GetPlanInfo": "get-plan-info",
+    "GetGroups": "get-team-groups",
+    "GetTeamMembers": "get-team-members",
+    "GetMe": "get-me",
+}
 
 
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -72,6 +94,26 @@ def json_request(
         # if the body isn't valid UTF-8.
         return None
     return parsed if isinstance(parsed, dict) else None
+
+
+def dashboard_request(
+    method_name: str,
+    *,
+    token: str,
+    cookie: str | None = None,
+    body: dict | None = None,
+) -> dict | None:
+    payload = json_request(
+        "POST", f"{API2}/{method_name}", token=token, body=body
+    )
+    if isinstance(payload, dict):
+        return payload
+    path = _DASHBOARD_PATHS.get(method_name)
+    if not path or not cookie:
+        return payload
+    return json_request(
+        "POST", f"{DASHBOARD}/{path}", cookie=cookie, body=body
+    )
 
 
 def _as_int(value: object) -> int | None:
@@ -156,11 +198,12 @@ def fetch_filtered_usage_events(
     base_body: dict,
     page_size: int = EVENT_PAGE_SIZE,
     max_pages: int = EVENT_MAX_PAGES,
+    cookie: str | None = None,
 ) -> dict:
-    first = json_request(
-        "POST",
-        f"{API2}/GetFilteredUsageEvents",
+    first = dashboard_request(
+        "GetFilteredUsageEvents",
         token=token,
+        cookie=cookie,
         body={**base_body, "page": 1, "pageSize": page_size},
     )
     if not isinstance(first, dict):
@@ -178,10 +221,10 @@ def fetch_filtered_usage_events(
     if num_pages > 1:
 
         def _page(page: int) -> dict | None:
-            return json_request(
-                "POST",
-                f"{API2}/GetFilteredUsageEvents",
+            return dashboard_request(
+                "GetFilteredUsageEvents",
                 token=token,
+                cookie=cookie,
                 body={**base_body, "page": page, "pageSize": page_size},
             )
 
@@ -211,6 +254,35 @@ def fetch_filtered_usage_events(
         out["usageEventsDisplay"] = rows
     out["totalUsageEventsCount"] = total or len(rows)
     return out
+
+
+def load_member_events(
+    member: GroupMember, snapshot: UsageSnapshot
+) -> tuple[UsageEvent, ...]:
+    """Team-wide fetches keep only the newest pages. Load this user's events
+    when that window missed them, so per-user models are not empty."""
+    cached = member_events(snapshot.events, member)
+    if cached:
+        return cached
+    session = read_session()
+    if session is None:
+        return ()
+    cookie = session_cookie(session.sub, session.access_token)
+    start_ms, end_ms = _cycle_ms(
+        {
+            "billingCycleStart": snapshot.cycle_start,
+            "billingCycleEnd": snapshot.cycle_end,
+        }
+    )
+    body: dict = {"userId": member.user_id}
+    if session.team_id is not None:
+        body["teamId"] = session.team_id
+    body.update(_date_fields(start_ms, end_ms))
+    payload = fetch_filtered_usage_events(
+        token=session.access_token, cookie=cookie, base_body=body
+    )
+    parsed = parse_events(payload)
+    return member_events(parsed, member) or parsed
 
 
 def _parse_members(raw: object) -> tuple[GroupMember, ...]:
@@ -297,17 +369,10 @@ def list_groups(*, token: str, cookie: str, team_id: int | None) -> tuple[Billin
     team_body: dict = {}
     if team_id is not None:
         team_body["teamId"] = team_id
-    payload = json_request("POST", f"{API2}/GetGroups", token=token, body=team_body)
-    groups = parse_groups(payload)
-    if groups:
-        return groups
-    fallback = json_request(
-        "POST",
-        "https://cursor.com/api/dashboard/get-team-groups",
-        cookie=cookie,
-        body=team_body,
+    payload = dashboard_request(
+        "GetGroups", token=token, cookie=cookie, body=team_body
     )
-    return parse_groups(fallback)
+    return parse_groups(payload)
 
 
 def find_group_member(
@@ -362,6 +427,7 @@ def fetch_group_model_aggregations(
     start_ms: int | None,
     end_ms: int | None,
     user_ids: list[int],
+    cookie: str | None = None,
 ) -> dict:
     if not user_ids:
         return {"aggregations": [], "totalCostCents": 0}
@@ -374,8 +440,8 @@ def fetch_group_model_aggregations(
             body["startDate"] = str(int(start_ms))
         if end_ms is not None:
             body["endDate"] = str(int(end_ms))
-        return json_request(
-            "POST", f"{API2}/GetAggregatedUsageEvents", token=token, body=body
+        return dashboard_request(
+            "GetAggregatedUsageEvents", token=token, cookie=cookie, body=body
         )
 
     payloads: list[dict | None] = []
@@ -407,6 +473,7 @@ def load_group_models(snapshot: UsageSnapshot) -> UsageSnapshot:
     )
     aggregated = fetch_group_model_aggregations(
         token=session.access_token,
+        cookie=session_cookie(session.sub, session.access_token),
         team_id=session.team_id,
         start_ms=start_ms,
         end_ms=end_ms,
@@ -481,6 +548,42 @@ def filter_events_for_email(filtered: dict | None, email: str | None) -> dict | 
     return filtered
 
 
+def fetch_live_role(
+    *,
+    token: str,
+    cookie: str,
+    team_id: int | None,
+    email: str | None,
+) -> str | None:
+    team_body: dict = {}
+    if team_id is not None:
+        team_body["teamId"] = team_id
+    members = dashboard_request(
+        "GetTeamMembers", token=token, cookie=cookie, body=team_body
+    )
+    role = member_role_for_email(members, email)
+    if role:
+        return role
+    me = dashboard_request("GetMe", token=token, cookie=cookie, body=team_body)
+    role = member_role_for_email(me, email) or extract_role(me)
+    if role:
+        return role
+    auth_me = json_request("GET", "https://cursor.com/api/auth/me", cookie=cookie)
+    return member_role_for_email(auth_me, email) or extract_role(auth_me)
+
+
+def has_admin_access(session: Session, *, token: str, cookie: str) -> bool:
+    live = fetch_live_role(
+        token=token,
+        cookie=cookie,
+        team_id=session.team_id,
+        email=session.email,
+    )
+    if live is not None:
+        return is_admin_role(live)
+    return is_admin_role(session.team_role)
+
+
 def fetch_usage(scope: str = "team", group_id: int | None = None) -> UsageSnapshot:
     if scope not in ("team", "self", "group"):
         scope = "team"
@@ -491,6 +594,8 @@ def fetch_usage(scope: str = "team", group_id: int | None = None) -> UsageSnapsh
         return UsageSnapshot.empty("Open Cursor to refresh your session")
     cookie = session_cookie(session.sub, session.access_token)
     token = session.access_token
+    if not has_admin_access(session, token=token, cookie=cookie):
+        return UsageSnapshot.empty(NO_ADMIN_STATUS)
     groups = list_groups(token=token, cookie=cookie, team_id=session.team_id)
     self_member = find_group_member(groups, session.email)
     usage_summary = json_request("GET", USAGE_SUMMARY_URL, cookie=cookie)
@@ -501,10 +606,10 @@ def fetch_usage(scope: str = "team", group_id: int | None = None) -> UsageSnapsh
     team_body.update(_date_fields(start_ms, end_ms))
     user_id = self_member.user_id if self_member else None
     if user_id is None and scope == "self":
-        members = json_request(
-            "POST",
-            f"{API2}/GetTeamMembers",
+        members = dashboard_request(
+            "GetTeamMembers",
             token=token,
+            cookie=cookie,
             body={"teamId": session.team_id} if session.team_id is not None else {},
         )
         user_id = find_member_id(members, session.email)
@@ -512,15 +617,17 @@ def fetch_usage(scope: str = "team", group_id: int | None = None) -> UsageSnapsh
             user_id = int(user_id)
     if scope == "self" and user_id is not None:
         team_body["userId"] = user_id
-    period = json_request(
-        "POST", f"{API2}/GetCurrentPeriodUsage", token=token, body={}
+    period = dashboard_request(
+        "GetCurrentPeriodUsage", token=token, cookie=cookie, body={}
     )
-    aggregated = json_request(
-        "POST", f"{API2}/GetAggregatedUsageEvents", token=token, body=team_body
+    aggregated = dashboard_request(
+        "GetAggregatedUsageEvents", token=token, cookie=cookie, body=team_body
     )
-    filtered = fetch_filtered_usage_events(token=token, base_body=team_body)
-    plan_info = json_request(
-        "POST", f"{API2}/GetPlanInfo", token=token, body={}
+    filtered = fetch_filtered_usage_events(
+        token=token, cookie=cookie, base_body=team_body
+    )
+    plan_info = dashboard_request(
+        "GetPlanInfo", token=token, cookie=cookie, body={}
     )
     selected = None
     group_label = None

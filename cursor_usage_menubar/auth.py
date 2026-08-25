@@ -7,6 +7,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from cursor_usage_menubar.models import Session
+from cursor_usage_menubar.roles import extract_role
 
 DEFAULT_DB = Path.home() / "Library/Application Support/Cursor/User/globalStorage/state.vscdb"
 
@@ -67,6 +68,7 @@ def read_session(db_path: Path | None = None) -> Session | None:
 
     team_id = None
     team_name = None
+    team_role = None
     raw_team = values.get("cursorAuth/cachedTeam")
     if raw_team:
         try:
@@ -76,8 +78,18 @@ def read_session(db_path: Path | None = None) -> Session | None:
                 if team_id is not None:
                     team_id = int(team_id)
                 team_name = team.get("name")
+                team_role = extract_role(team)
         except (TypeError, ValueError, json.JSONDecodeError):
             pass
+    if not team_role:
+        raw_profile = values.get("cursorAuth/cachedScopedProfile")
+        if raw_profile:
+            try:
+                profile = json.loads(raw_profile)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                profile = None
+            if isinstance(profile, dict):
+                team_role = extract_role(profile)
 
     return Session(
         access_token=token,
@@ -86,4 +98,5 @@ def read_session(db_path: Path | None = None) -> Session | None:
         team_id=team_id,
         team_name=team_name,
         plan_hint=values.get("cursorAuth/stripeMembershipType") or None,
+        team_role=team_role,
     )

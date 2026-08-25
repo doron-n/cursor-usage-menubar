@@ -2,13 +2,16 @@ from datetime import datetime, timezone
 import unittest
 
 from cursor_usage_menubar.analytics import (
+    WEEK_MS,
     burst_member_ids,
     burst_reason,
     daily_spend_series,
     member_models,
     member_stats,
+    overview_pool_cents,
     parse_events,
     recent_spend_cents,
+    top_members_by_recent_spend,
     view_pool_cents,
 )
 from cursor_usage_menubar.models import GroupMember, ModelSpend, UsageEvent
@@ -128,6 +131,19 @@ class DailySeriesTest(unittest.TestCase):
         self.assertEqual(len(series), 25)
         self.assertEqual(sum(cents for _day, cents in series), 250)
 
+    def test_series_is_spend_per_day_not_cumulative(self):
+        events = (
+            UsageEvent(at_ms=NOW - 2 * DAY, cents=100),
+            UsageEvent(at_ms=NOW - DAY, cents=250),
+            UsageEvent(at_ms=NOW, cents=50),
+        )
+        series = daily_spend_series(events, now_ms=NOW)
+        by_day = dict(series)
+        self.assertEqual(by_day["2026-08-23"], 100)
+        self.assertEqual(by_day["2026-08-24"], 250)
+        self.assertEqual(by_day["2026-08-25"], 50)
+        self.assertEqual(by_day["2026-08-01"], 0)
+
 
 class BurstTest(unittest.TestCase):
     def test_flags_user_who_spent_a_quarter_in_one_day(self):
@@ -142,6 +158,22 @@ class BurstTest(unittest.TestCase):
         self.assertIn("Spike", burst_reason(events, ada, now_ms=NOW) or "")
         self.assertIsNone(burst_reason(events, bob, now_ms=NOW))
         self.assertEqual(recent_spend_cents(events, ada, now_ms=NOW), 2000)
+
+    def test_top_three_spenders_in_last_seven_days(self):
+        ada = GroupMember(1, "ada@x.com", "Ada", 4000, 50000)
+        bob = GroupMember(2, "bob@x.com", "Bob", 8000, 50000)
+        cam = GroupMember(3, "cam@x.com", "Cam", 1000, 50000)
+        dan = GroupMember(4, "dan@x.com", "Dan", 9000, 50000)
+        events = (
+            UsageEvent(NOW - DAY, 300, "ada@x.com", 1),
+            UsageEvent(NOW - 2 * DAY, 900, "bob@x.com", 2),
+            UsageEvent(NOW - 3 * DAY, 500, "cam@x.com", 3),
+            UsageEvent(NOW - 10 * DAY, 8000, "dan@x.com", 4),
+        )
+        top = top_members_by_recent_spend(
+            events, (ada, bob, cam, dan), now_ms=NOW, window_ms=WEEK_MS, limit=3
+        )
+        self.assertEqual([member.user_id for member in top], [2, 3, 1])
 
 
 class MemberDetailTest(unittest.TestCase):
@@ -230,6 +262,25 @@ class MemberDetailTest(unittest.TestCase):
             ModelSpend("sonnet", "sonnet", 300, 1, 1, 1, False),
         )
         self.assertEqual(view_pool_cents(events, (ada,), models), (100, 50))
+
+    def test_overview_pool_scales_mix_to_official_spend(self):
+        ada = GroupMember(7, "ada@x.com", "Ada", 1000, 10000)
+        events = (
+            UsageEvent(NOW, 100, "ada@x.com", 7, "composer-1", 1, 1),
+            UsageEvent(NOW, 50, "ada@x.com", 7, "sonnet", 1, 1),
+        )
+        models = (
+            ModelSpend("composer-1", "composer-1", 700, 1, 1, 1, False),
+            ModelSpend("sonnet", "sonnet", 300, 1, 1, 1, False),
+        )
+        self.assertEqual(
+            overview_pool_cents(events, (ada,), models, spent_cents=10000),
+            (7000, 3000),
+        )
+        self.assertEqual(
+            overview_pool_cents(events, (ada,), (), spent_cents=9000),
+            (6000, 3000),
+        )
 
 
 if __name__ == "__main__":

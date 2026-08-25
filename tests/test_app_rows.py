@@ -2,9 +2,11 @@ import unittest
 from unittest.mock import patch
 
 from cursor_usage_menubar.app import (
+    MENU_ACTIONS,
     _safe_fetch_usage,
     info_rows,
     keep_loaded_models,
+    menu_titles,
     snapshot_with_models,
     user_usage_rows,
 )
@@ -111,6 +113,36 @@ class InfoRowsTest(unittest.TestCase):
         snap = UsageSnapshot.empty("Open Cursor to refresh your session")
         rows = info_rows(snap)
         self.assertEqual(rows[0], "Open Cursor to refresh your session")
+
+    def test_status_row_when_not_admin(self):
+        from cursor_usage_menubar.roles import NO_ADMIN_STATUS
+
+        snap = UsageSnapshot.empty(NO_ADMIN_STATUS)
+        self.assertEqual(info_rows(snap), [NO_ADMIN_STATUS])
+
+    def test_denied_snapshot_does_not_keep_previous_models(self):
+        from cursor_usage_menubar.roles import NO_ADMIN_STATUS
+
+        models = (ModelSpend("Claude 4.6 Sonnet", "claude", 1800, 1, 1, 1, False),)
+        previous = UsageSnapshot(
+            email="a@b.c",
+            team_name="Acme",
+            plan_name="Enterprise",
+            spent_cents=1800,
+            limit_cents=10000,
+            remaining_cents=8200,
+            percent=18,
+            cycle_start=None,
+            cycle_end=None,
+            models=models,
+            status=None,
+            top_model=models[0],
+        )
+        denied = UsageSnapshot.empty(NO_ADMIN_STATUS)
+        kept = keep_loaded_models(denied, previous)
+        self.assertEqual(kept.models, ())
+        self.assertIsNone(kept.spent_cents)
+        self.assertEqual(kept.status, NO_ADMIN_STATUS)
 
     def test_cursor_model_forecast_row_when_third_party_tokens(self):
         snap = UsageSnapshot(
@@ -221,16 +253,45 @@ class InfoRowsTest(unittest.TestCase):
             snap = _safe_fetch_usage()
         self.assertIs(snap, good)
 
-    def test_view_menu_includes_global(self):
+    def test_menu_keeps_only_actions(self):
+        snap = UsageSnapshot(
+            email="ada@example.com",
+            team_name="Acme",
+            plan_name="Enterprise",
+            spent_cents=23734,
+            limit_cents=50000,
+            remaining_cents=26266,
+            percent=47,
+            cycle_start="2026-08-01",
+            cycle_end="2026-08-31",
+            models=(),
+            status=None,
+            top_model=None,
+        )
+        titles = menu_titles(snap)
+        self.assertEqual(titles, list(MENU_ACTIONS))
+        joined = "\n".join(titles)
+        self.assertNotIn("Account:", joined)
+        self.assertNotIn("Top user:", joined)
+        self.assertNotIn("Open Cursor Dashboard", joined)
+        self.assertNotIn("Version ", joined)
+
+    def test_menu_keeps_status_when_signed_out(self):
+        titles = menu_titles(UsageSnapshot.empty("Open Cursor to refresh your session"))
+        self.assertEqual(titles[0], "Open Cursor to refresh your session")
+        self.assertEqual(titles[1:], list(MENU_ACTIONS))
+
+    def test_settings_page_has_view_and_refresh_controls(self):
         import inspect
 
-        from cursor_usage_menubar.app import CursorUsageApp
+        import cursor_usage_menubar.workspace as mod
 
-        source = inspect.getsource(CursorUsageApp._view_menu)
+        source = inspect.getsource(mod)
+        self.assertIn("DATA VIEW", source)
+        self.assertIn("Myself only", source)
         self.assertIn('"Global"', source)
-        self.assertIn('_select_view("team")', source)
-        enter = inspect.getsource(CursorUsageApp._enter_group_id)
-        self.assertIn('{"scope": "team"}', enter)
+        self.assertIn("Show usage percent on the Dock icon", source)
+        self.assertIn("Open Cursor Dashboard", source)
 
 
 if __name__ == "__main__":

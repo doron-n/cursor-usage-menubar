@@ -10,6 +10,9 @@ ICNS = os.path.join(ROOT, "packaging", "CursorUsage.icns")
 datas = collect_data_files("certifi")
 if os.path.isdir(ASSET_DIR):
     datas.append((ASSET_DIR, "cursor_usage_menubar/assets"))
+VERSION_FILE = os.path.join(ROOT, "VERSION")
+if os.path.isfile(VERSION_FILE):
+    datas.append((VERSION_FILE, "."))
 hidden = collect_submodules("cursor_usage_menubar") + [
     "rumps",
     "AppKit",
