@@ -13,7 +13,11 @@ from cursor_usage_menubar.cursor_pricing import cursor_model_forecast, forecast_
 from cursor_usage_menubar.formatters import dock_badge, dollars, menu_title
 from cursor_usage_menubar.models import UsageSnapshot
 from cursor_usage_menubar.prefs import load_prefs, save_prefs
-from cursor_usage_menubar.users import refresh_users_if_visible, show_users
+from cursor_usage_menubar.users import (
+    member_cap_percent,
+    refresh_users_if_visible,
+    show_users,
+)
 
 DASHBOARD_URL = "https://cursor.com/dashboard/usage"
 _FETCH_ERROR_STATUS = "Open Cursor to refresh your session"
@@ -178,12 +182,15 @@ def user_usage_rows(snapshot: UsageSnapshot) -> list[str]:
     if not members:
         return []
     ordered = sorted(members, key=lambda m: m.spend_cents, reverse=True)
-    total = snapshot.spent_cents or sum(m.spend_cents for m in ordered) or 1
     rows = ["Users by usage"]
     for member in ordered:
         name = member.name or member.email or str(member.user_id)
-        share = int(round(100 * member.spend_cents / total)) if total else 0
-        rows.append(f"{name} · {dollars(member.spend_cents)} · {share}%")
+        pct = member_cap_percent(member)
+        amount = dollars(member.spend_cents)
+        if pct is None:
+            rows.append(f"{name} · {amount}")
+        else:
+            rows.append(f"{name} · {amount} · {pct}%")
     return rows
 
 

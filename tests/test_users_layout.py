@@ -1,5 +1,6 @@
 import inspect
 import unittest
+from dataclasses import replace
 
 from cursor_usage_menubar.breakdown import (
     BASE_SUMMARY_H,
@@ -10,7 +11,13 @@ from cursor_usage_menubar.breakdown import (
     ROW_H,
 )
 from cursor_usage_menubar.models import BillingGroup, GroupMember, ModelSpend, UsageSnapshot
-from cursor_usage_menubar.users import ordered_members, show_users, users_layout_height
+from cursor_usage_menubar.users import (
+    member_cap_fraction,
+    member_cap_percent,
+    ordered_members,
+    show_users,
+    users_layout_height,
+)
 
 
 def _group_snap(n: int = 2) -> UsageSnapshot:
@@ -45,6 +52,34 @@ class UsersLayoutTest(unittest.TestCase):
     def test_ordered_members_highest_spend_first(self):
         names = [m.name for m in ordered_members(_group_snap(3))]
         self.assertEqual(names, ["User 0", "User 1", "User 2"])
+
+    def test_ordered_members_name_and_cap_and_direction(self):
+        members = (
+            GroupMember(1, "b@x.com", "Bob", 100, 70000),
+            GroupMember(2, "a@x.com", "Ada", 300, 50000),
+            GroupMember(3, "c@x.com", "Cy", 200, None),
+        )
+        snap = replace(
+            _group_snap(1),
+            groups=(BillingGroup(9484, "xDome-R&D", members=members),),
+        )
+        names = lambda **kw: [m.name for m in ordered_members(snap, **kw)]
+        self.assertEqual(names(sort_by="usage", descending=True), ["Ada", "Cy", "Bob"])
+        self.assertEqual(names(sort_by="usage", descending=False), ["Bob", "Cy", "Ada"])
+        self.assertEqual(names(sort_by="name", descending=False), ["Ada", "Bob", "Cy"])
+        self.assertEqual(names(sort_by="name", descending=True), ["Cy", "Bob", "Ada"])
+        self.assertEqual(names(sort_by="cap", descending=True), ["Bob", "Ada", "Cy"])
+        self.assertEqual(names(sort_by="cap", descending=False), ["Cy", "Ada", "Bob"])
+
+    def test_member_percent_is_of_personal_cap_not_group_total(self):
+        member = GroupMember(1, "yair.z@claroty.com", "Yair Zori", 91537, 100000)
+        self.assertEqual(member_cap_percent(member), 92)
+        self.assertAlmostEqual(member_cap_fraction(member), 0.91537, places=5)
+
+    def test_member_percent_missing_without_cap(self):
+        member = GroupMember(1, "a@x.com", "Ada", 91537, None)
+        self.assertIsNone(member_cap_percent(member))
+        self.assertEqual(member_cap_fraction(member), 0.0)
 
     def test_no_webkit(self):
         import cursor_usage_menubar.users as mod
@@ -87,6 +122,25 @@ class UsersWindowTest(unittest.TestCase):
         ctrl = self._controller()
         ctrl._ensure_window()
         self.assertEqual(ctrl.window.title(), "Users by Usage")
+
+    def test_default_sort_is_usage_desc(self):
+        ctrl = self._controller()
+        self.assertEqual(ctrl.sort_by, "usage")
+        self.assertTrue(ctrl.sort_desc)
+
+    def test_sort_actions_update_order_without_crashing(self):
+        from unittest.mock import Mock
+
+        ctrl = self._controller()
+        ctrl._ensure_window()
+        by = Mock()
+        by.indexOfSelectedItem.return_value = 1
+        ctrl.sortByChanged_(by)
+        self.assertEqual(ctrl.sort_by, "name")
+        direction = Mock()
+        direction.indexOfSelectedItem.return_value = 1
+        ctrl.sortDirChanged_(direction)
+        self.assertFalse(ctrl.sort_desc)
 
     def test_summary_draws_actual_and_forecast_bars(self):
         from dataclasses import replace

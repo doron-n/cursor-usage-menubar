@@ -101,8 +101,8 @@ class InfoRowsTest(unittest.TestCase):
         self.assertFalse(any(r.startswith("Top model:") for r in rows))
         users = user_usage_rows(snap)
         self.assertEqual(users[0], "Users by usage")
-        self.assertTrue(any(u.startswith("Ada · $2.00") for u in users))
-        self.assertTrue(any(u.startswith("Bob · $1.00") for u in users))
+        self.assertTrue(any(u.startswith("Ada · $2.00") and " · 0%" in u for u in users))
+        self.assertTrue(any(u.startswith("Bob · $1.00") and " · 0%" in u for u in users))
 
     def test_status_row_when_signed_out(self):
         snap = UsageSnapshot.empty("Open Cursor to refresh your session")

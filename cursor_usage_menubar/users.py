@@ -6,6 +6,7 @@ from AppKit import (
     NSColor,
     NSFont,
     NSMakeRect,
+    NSPopUpButton,
     NSScrollView,
     NSTextField,
     NSWindow,
@@ -32,6 +33,9 @@ from cursor_usage_menubar.breakdown import (
 from cursor_usage_menubar.formatters import dollars
 from cursor_usage_menubar.models import GroupMember, UsageSnapshot
 
+SORT_BY_OPTIONS = ("usage", "name", "cap")
+SORT_BY_LABELS = ("Usage", "Name", "Cap")
+
 
 def users_layout_height(snapshot: UsageSnapshot) -> int:
     members = snapshot.selected_members()
@@ -40,9 +44,37 @@ def users_layout_height(snapshot: UsageSnapshot) -> int:
     return height + FOOTER_H + PAD
 
 
-def ordered_members(snapshot: UsageSnapshot) -> tuple[GroupMember, ...]:
-    members = snapshot.selected_members()
-    return tuple(sorted(members, key=lambda m: m.spend_cents, reverse=True))
+def ordered_members(
+    snapshot: UsageSnapshot,
+    *,
+    sort_by: str = "usage",
+    descending: bool = True,
+) -> tuple[GroupMember, ...]:
+    members = list(snapshot.selected_members())
+    key = sort_by if sort_by in SORT_BY_OPTIONS else "usage"
+    members.sort(key=_member_sort_key(key), reverse=descending)
+    return tuple(members)
+
+
+def _member_sort_key(sort_by: str):
+    if sort_by == "name":
+        return lambda m: ((m.name or m.email or str(m.user_id)).casefold(), m.user_id)
+    if sort_by == "cap":
+        # Missing caps sort last when descending (typical default).
+        return lambda m: (m.limit_cents if m.limit_cents is not None else -1, m.user_id)
+    return lambda m: (m.spend_cents, m.user_id)
+
+
+def member_cap_percent(member: GroupMember) -> int | None:
+    if not member.limit_cents or member.limit_cents <= 0:
+        return None
+    return int(round(100 * member.spend_cents / member.limit_cents))
+
+
+def member_cap_fraction(member: GroupMember) -> float:
+    if not member.limit_cents or member.limit_cents <= 0:
+        return 0.0
+    return min(1.0, member.spend_cents / member.limit_cents)
 
 
 class UsersController(NSObject):
@@ -52,6 +84,8 @@ class UsersController(NSObject):
         self = objc_super(UsersController, self).init()
         self.window = None
         self.snapshot = None
+        self.sort_by = "usage"
+        self.sort_desc = True
         return self
 
     @classmethod
@@ -164,10 +198,12 @@ class UsersController(NSObject):
 
     @python_method
     def _users(self, doc, snap, y):
-        self._label(doc, "BY USER", PAD, y, 200, 18, size=11, bold=True, secondary=True)
-        y += 28
-        members = ordered_members(snap)
-        total = snap.spent_cents or sum(m.spend_cents for m in members) or 1
+        self._label(doc, "BY USER", PAD, y + 4, 120, 18, size=11, bold=True, secondary=True)
+        self._sort_controls(doc, y)
+        y += 32
+        members = ordered_members(
+            snap, sort_by=self.sort_by, descending=self.sort_desc
+        )
         if not members:
             self._label(
                 doc,
@@ -181,20 +217,55 @@ class UsersController(NSObject):
             )
             return y + 22
         for member in members:
-            y = self._user_row(doc, member, total, y)
+            y = self._user_row(doc, member, y)
         return y
 
+    def sortByChanged_(self, sender):
+        idx = int(sender.indexOfSelectedItem())
+        if 0 <= idx < len(SORT_BY_OPTIONS):
+            self.sort_by = SORT_BY_OPTIONS[idx]
+        self.render()
+
+    def sortDirChanged_(self, sender):
+        self.sort_desc = int(sender.indexOfSelectedItem()) == 0
+        self.render()
+
     @python_method
-    def _user_row(self, doc, member: GroupMember, total: int, y):
+    def _sort_controls(self, doc, y):
+        by = NSPopUpButton.alloc().initWithFrame_pullsDown_(
+            NSMakeRect(WINDOW_WIDTH - PAD - 210, y, 110, 26), False
+        )
+        by.addItemsWithTitles_(list(SORT_BY_LABELS))
+        by.selectItemAtIndex_(
+            SORT_BY_OPTIONS.index(self.sort_by)
+            if self.sort_by in SORT_BY_OPTIONS
+            else 0
+        )
+        by.setTarget_(self)
+        by.setAction_("sortByChanged:")
+        doc.addSubview_(by)
+        direction = NSPopUpButton.alloc().initWithFrame_pullsDown_(
+            NSMakeRect(WINDOW_WIDTH - PAD - 92, y, 92, 26), False
+        )
+        direction.addItemsWithTitles_(["Desc", "Asc"])
+        direction.selectItemAtIndex_(0 if self.sort_desc else 1)
+        direction.setTarget_(self)
+        direction.setAction_("sortDirChanged:")
+        doc.addSubview_(direction)
+
+    @python_method
+    def _user_row(self, doc, member: GroupMember, y):
         x = PAD
         width = WINDOW_WIDTH - PAD * 2
         name = member.name or member.email or str(member.user_id)
-        frac = member.spend_cents / total if total else 0
-        pct = int(round(100 * frac))
+        frac = member_cap_fraction(member)
+        pct = member_cap_percent(member)
+        spent = dollars(member.spend_cents)
+        amount = f"{spent} · {pct}%" if pct is not None else spent
         self._label(doc, name, x, y, 280, 18, size=13, bold=True)
         self._label(
             doc,
-            f"{dollars(member.spend_cents)} · {pct}%",
+            amount,
             x + width - 160,
             y,
             160,
