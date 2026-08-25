@@ -8,6 +8,9 @@ from cursor_usage_menubar.cursor_pricing import (
     forecast_card_captions,
     forecast_menu_row,
     is_cursor_pool_model,
+    pool_cents,
+    search_models,
+    sort_models,
     tokens_to_composer_cents,
 )
 from cursor_usage_menubar.models import ModelSpend, UsageSnapshot
@@ -42,6 +45,17 @@ class CursorPoolMatchTest(unittest.TestCase):
         self.assertFalse(is_cursor_pool_model("GPT-5.4", "gpt-5.4"))
         self.assertFalse(is_cursor_pool_model("Gemini 3 Pro"))
         self.assertFalse(is_cursor_pool_model("Auto", "auto-smart"))
+
+    def test_pool_cents_splits_cursor_and_other(self):
+        models = (
+            ModelSpend("composer-1", "composer-1", 900, 1, 1, 1, False),
+            ModelSpend("grok-4.5", "grok-4.5", 400, 1, 1, 1, False),
+            ModelSpend("sonnet", "sonnet", 250, 1, 1, 1, False),
+            ModelSpend("opus", "opus", 50, 1, 1, 1, False),
+        )
+        cursor, other = pool_cents(models)
+        self.assertEqual(cursor, 1300)
+        self.assertEqual(other, 300)
 
 
 class ComposerRateTest(unittest.TestCase):
@@ -144,6 +158,16 @@ class ModelFilterTest(unittest.TestCase):
         self.assertEqual(filtered.percent, 8)
         self.assertEqual([m.label for m in filtered.models], ["Composer 2.5"])
         self.assertIs(apply_model_filter(snap, "all"), snap)
+
+    def test_search_and_sort_models(self):
+        grok = ModelSpend("Composer 2.5", "composer-2.5", 400, 10, 4, 2, False)
+        claude = ModelSpend("Claude 4.6 Sonnet", "claude-4.6-sonnet", 600, 90, 4, 3, False)
+        found = search_models((grok, claude), "claude")
+        self.assertEqual([m.label for m in found], ["Claude 4.6 Sonnet"])
+        by_name = sort_models((grok, claude), "name", descending=False)
+        self.assertEqual([m.label for m in by_name], ["Claude 4.6 Sonnet", "Composer 2.5"])
+        by_tokens = sort_models((grok, claude), "tokens", descending=True)
+        self.assertEqual(by_tokens[0].label, "Claude 4.6 Sonnet")
 
 
 if __name__ == "__main__":

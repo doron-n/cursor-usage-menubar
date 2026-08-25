@@ -11,7 +11,14 @@ class DownloadPageTest(unittest.TestCase):
     def test_changelog_covers_current_and_previous(self):
         data = json.loads(CHANGELOG.read_text(encoding="utf-8"))
         versions = [rel["version"] for rel in data["releases"]]
-        self.assertEqual(versions[0], "1.0.3")
+        self.assertEqual(versions[0], "1.0.10")
+        self.assertIn("1.0.9", versions)
+        self.assertIn("1.0.8", versions)
+        self.assertIn("1.0.7", versions)
+        self.assertIn("1.0.6", versions)
+        self.assertIn("1.0.5", versions)
+        self.assertIn("1.0.4", versions)
+        self.assertIn("1.0.3", versions)
         self.assertIn("1.0.2", versions)
         self.assertIn("1.0.1", versions)
         latest = data["releases"][0]
@@ -26,8 +33,13 @@ class DownloadPageTest(unittest.TestCase):
         self.assertIn("changelog.json", html)
         self.assertIn("api.github.com/repos/", html)
         self.assertIn("/releases", html)
+        self.assertIn("every release before it", html)
         self.assertIn("Global budget", html)
+        self.assertIn("assets/app-icon.png", html)
+        for version in ("1.0.10", "1.0.9", "1.0.8", "1.0.7", "1.0.6", "1.0.5", "1.0.4", "1.0.3", "1.0.2", "1.0.1"):
+            self.assertIn('"' + version + '"', html)
         self.assertNotIn("WebKit", html)
+        self.assertTrue((ROOT / "docs" / "assets" / "app-icon.png").is_file())
 
 
 if __name__ == "__main__":

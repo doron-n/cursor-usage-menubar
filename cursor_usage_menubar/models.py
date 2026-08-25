@@ -44,6 +44,17 @@ class BillingGroup:
 
 
 @dataclass(frozen=True)
+class UsageEvent:
+    at_ms: int
+    cents: int
+    user_email: str | None = None
+    user_id: int | None = None
+    model: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
+@dataclass(frozen=True)
 class UsageSnapshot:
     email: str | None
     team_name: str | None
@@ -62,6 +73,7 @@ class UsageSnapshot:
     group_label: str | None = None
     groups: tuple[BillingGroup, ...] = ()
     breakdown_kind: str = "models"
+    events: tuple[UsageEvent, ...] = ()
 
     def selected_members(self) -> tuple[GroupMember, ...]:
         if self.scope != "group" or self.group_id is None:

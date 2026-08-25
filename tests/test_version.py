@@ -38,6 +38,22 @@ class VersionBumpTest(unittest.TestCase):
         self.assertIn("- Model filter", notes)
         self.assertIn("doron-n.github.io/cursor-usage-menubar", notes)
 
+    def test_notes_history_includes_older_versions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "changelog.json"
+            path.write_text(
+                '{"releases":['
+                '{"version":"1.0.10","title":"Month graph","highlights":["Pages events"]},'
+                '{"version":"1.0.3","title":"Global budget","highlights":["View → Global"]},'
+                '{"version":"1.0.1","title":"Public page","highlights":["First installer"]}'
+                "]}\n"
+            )
+            notes = notes_for("1.0.10", path, history=True)
+        self.assertIn("Month graph", notes)
+        self.assertIn("- Pages events", notes)
+        self.assertIn("## 1.0.3 — Global budget", notes)
+        self.assertIn("## 1.0.1 — Public page", notes)
+
     def test_notes_for_unknown_version_is_generic(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "changelog.json"

@@ -7,10 +7,12 @@ import urllib.error
 import urllib.request
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from dataclasses import replace
+from datetime import datetime, timezone
 
 import certifi
 
+from cursor_usage_menubar.analytics import month_start_date, parse_events
 from cursor_usage_menubar.auth import read_session, session_cookie
 from cursor_usage_menubar.merge import aggregations_from_filtered, merge_snapshot
 from cursor_usage_menubar.models import BillingGroup, GroupMember, UsageSnapshot
@@ -111,7 +113,104 @@ def _cycle_ms(summary: dict | None) -> tuple[int | None, int | None]:
         except ValueError:
             return None
 
-    return _ms(start), _ms(end)
+    start_ms, end_ms = _ms(start), _ms(end)
+    month_ms = int(
+        datetime.combine(
+            month_start_date(), datetime.min.time(), tzinfo=timezone.utc
+        ).timestamp()
+        * 1000
+    )
+    if start_ms is None or start_ms > month_ms:
+        start_ms = month_ms
+    return start_ms, end_ms
+
+
+def _date_fields(start_ms: int | None, end_ms: int | None) -> dict:
+    body: dict = {}
+    if start_ms is not None:
+        body["startDate"] = str(int(start_ms))
+    if end_ms is not None:
+        body["endDate"] = str(int(end_ms))
+    return body
+
+
+def _event_rows(payload: dict | None) -> list:
+    if not isinstance(payload, dict):
+        return []
+    raw = (
+        payload.get("usageEventsDisplay")
+        or payload.get("usageEvents")
+        or payload.get("events")
+        or []
+    )
+    return raw if isinstance(raw, list) else []
+
+
+EVENT_PAGE_SIZE = 1000
+EVENT_MAX_PAGES = 20
+
+
+def fetch_filtered_usage_events(
+    *,
+    token: str,
+    base_body: dict,
+    page_size: int = EVENT_PAGE_SIZE,
+    max_pages: int = EVENT_MAX_PAGES,
+) -> dict:
+    first = json_request(
+        "POST",
+        f"{API2}/GetFilteredUsageEvents",
+        token=token,
+        body={**base_body, "page": 1, "pageSize": page_size},
+    )
+    if not isinstance(first, dict):
+        return {"usageEventsDisplay": []}
+    rows = list(_event_rows(first))
+    total = _as_int(first.get("totalUsageEventsCount")) or 0
+    if total > 0:
+        num_pages = min(max_pages, max(1, (total + page_size - 1) // page_size))
+    elif len(rows) >= page_size:
+        num_pages = max_pages
+    else:
+        num_pages = 1
+
+    extra: dict[int, dict | None] = {}
+    if num_pages > 1:
+
+        def _page(page: int) -> dict | None:
+            return json_request(
+                "POST",
+                f"{API2}/GetFilteredUsageEvents",
+                token=token,
+                body={**base_body, "page": page, "pageSize": page_size},
+            )
+
+        if total > 0:
+            workers = min(8, num_pages - 1)
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = {pool.submit(_page, page): page for page in range(2, num_pages + 1)}
+                for future in as_completed(futures):
+                    extra[futures[future]] = future.result()
+        else:
+            for page in range(2, num_pages + 1):
+                payload = _page(page)
+                extra[page] = payload
+                chunk = _event_rows(payload)
+                if not chunk or len(chunk) < page_size:
+                    break
+
+    for page in range(2, num_pages + 1):
+        rows.extend(_event_rows(extra.get(page)))
+
+    out = dict(first)
+    if "usageEvents" in first:
+        out["usageEvents"] = rows
+    elif "events" in first:
+        out["events"] = rows
+    else:
+        out["usageEventsDisplay"] = rows
+    out["totalUsageEventsCount"] = total or len(rows)
+    return out
 
 
 def _parse_members(raw: object) -> tuple[GroupMember, ...]:
@@ -272,9 +371,9 @@ def fetch_group_model_aggregations(
         if team_id is not None:
             body["teamId"] = team_id
         if start_ms is not None:
-            body["startDate"] = start_ms
+            body["startDate"] = str(int(start_ms))
         if end_ms is not None:
-            body["endDate"] = end_ms
+            body["endDate"] = str(int(end_ms))
         return json_request(
             "POST", f"{API2}/GetAggregatedUsageEvents", token=token, body=body
         )
@@ -313,7 +412,7 @@ def load_group_models(snapshot: UsageSnapshot) -> UsageSnapshot:
         end_ms=end_ms,
         user_ids=user_ids,
     )
-    return merge_snapshot(
+    loaded = merge_snapshot(
         session=session,
         usage_summary={
             "billingCycleStart": snapshot.cycle_start,
@@ -331,6 +430,7 @@ def load_group_models(snapshot: UsageSnapshot) -> UsageSnapshot:
         limit_override=snapshot.limit_cents,
         breakdown_kind="models",
     )
+    return replace(loaded, events=snapshot.events)
 
 
 def find_member_id(payload: dict | None, email: str | None) -> int | str | None:
@@ -398,10 +498,7 @@ def fetch_usage(scope: str = "team", group_id: int | None = None) -> UsageSnapsh
     team_body: dict = {}
     if session.team_id is not None:
         team_body["teamId"] = session.team_id
-    if start_ms is not None:
-        team_body["startDate"] = start_ms
-    if end_ms is not None:
-        team_body["endDate"] = end_ms
+    team_body.update(_date_fields(start_ms, end_ms))
     user_id = self_member.user_id if self_member else None
     if user_id is None and scope == "self":
         members = json_request(
@@ -421,10 +518,7 @@ def fetch_usage(scope: str = "team", group_id: int | None = None) -> UsageSnapsh
     aggregated = json_request(
         "POST", f"{API2}/GetAggregatedUsageEvents", token=token, body=team_body
     )
-    filtered_body = {"page": 1, "pageSize": 1000, **team_body}
-    filtered = json_request(
-        "POST", f"{API2}/GetFilteredUsageEvents", token=token, body=filtered_body
-    )
+    filtered = fetch_filtered_usage_events(token=token, base_body=team_body)
     plan_info = json_request(
         "POST", f"{API2}/GetPlanInfo", token=token, body={}
     )
@@ -436,6 +530,7 @@ def fetch_usage(scope: str = "team", group_id: int | None = None) -> UsageSnapsh
     spend_override = None
     limit_override = None
     breakdown_kind = "models"
+    event_source = filtered
     if scope == "group" and selected is not None:
         spend_override = selected.spend_cents
         limit_override = selected.limit_cents
@@ -446,13 +541,14 @@ def fetch_usage(scope: str = "team", group_id: int | None = None) -> UsageSnapsh
         limit_override = self_member.limit_cents
     elif scope == "self":
         filtered = filter_events_for_email(filtered, session.email)
+        event_source = filtered
         if user_id is None:
             synthesized = aggregations_from_filtered(filtered)
             if synthesized is not None:
                 aggregated = synthesized
     if usage_summary is None and period is None and aggregated is None:
         return UsageSnapshot.empty("Open Cursor to refresh your session")
-    return merge_snapshot(
+    snapshot = merge_snapshot(
         session=session,
         usage_summary=usage_summary,
         period_usage=period,
@@ -467,3 +563,6 @@ def fetch_usage(scope: str = "team", group_id: int | None = None) -> UsageSnapsh
         limit_override=limit_override,
         breakdown_kind=breakdown_kind,
     )
+    if event_source is not filtered:
+        return replace(snapshot, events=parse_events(event_source))
+    return snapshot

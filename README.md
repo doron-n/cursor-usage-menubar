@@ -39,8 +39,7 @@ After `./install.sh install`, the LaunchAgent's `KeepAlive` means clicking Quit 
 Menu title looks like `18%` (or `—` if usage is unknown). The same percent appears as a Dock badge. Click the menu-bar title or the Dock icon for account/plan/view/spend/allowance/remaining/cycle/top model, then:
 
 - View (Myself only / Global / billing groups / Enter Group ID…)
-- View Users by Usage… (native window, when a group is selected)
-- View Model Breakdown… (native window, Auto accordion, Cursor/other model filter)
+- Open Cursor Usage… (one window: Overview, Models, Users; dark mode; graph; spike flags)
 - Refresh Now
 - Open Cursor Dashboard
 - Quit

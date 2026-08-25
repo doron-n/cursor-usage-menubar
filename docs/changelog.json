@@ -1,6 +1,72 @@
 {
   "releases": [
     {
+      "version": "1.0.10",
+      "title": "Month graph, user mix, and mission-control window",
+      "highlights": [
+        "Spend this cycle pages usage events from the first of the month.",
+        "Users pie falls back to aggregated model spend when events do not match.",
+        "User details match Cursor owningUser events for top models and graphs."
+      ]
+    },
+    {
+      "version": "1.0.9",
+      "title": "Spend graph covers the whole month",
+      "highlights": [
+        "Usage events are requested from the first of the month with string dates Cursor accepts.",
+        "The app pages through events instead of keeping only the newest thousand.",
+        "Spend this cycle can show days before today, not a single spike."
+      ]
+    },
+    {
+      "version": "1.0.8",
+      "title": "Cursor vs other pie uses model totals",
+      "highlights": [
+        "The Users pie uses aggregated model spend when events do not match a person.",
+        "Group views no longer show $0.00 for Cursor vs other.",
+        "Matched per-user events still win when they are available."
+      ]
+    },
+    {
+      "version": "1.0.7",
+      "title": "User top models now match real Cursor events",
+      "highlights": [
+        "User details read owningUser from Cursor usage events.",
+        "Top 3 models, the pie, and the spend graph now attach to the right person.",
+        "Event IDs are no longer mistaken for user IDs."
+      ]
+    },
+    {
+      "version": "1.0.6",
+      "title": "Month graph, top models, and Cursor vs other pie",
+      "highlights": [
+        "Spend this cycle starts on the first day of the month.",
+        "User details show the three most-used models.",
+        "A pie chart on Users and user details shows Cursor models vs other models."
+      ]
+    },
+    {
+      "version": "1.0.5",
+      "title": "Mission-control UI, new icon, gauges and graphs",
+      "highlights": [
+        "New app icon and a darker ink-and-cyan look with avatars, SF Symbols, and cards.",
+        "Overview opens on a usage gauge, spend tiles, and an area graph for the cycle.",
+        "Users and models are card rows — click a person for their graph and model mix.",
+        "Usage sort is percent of cap. The filter keeps what you type."
+      ]
+    },
+    {
+      "version": "1.0.4",
+      "title": "One window, tabs, graph, and spend spikes",
+      "highlights": [
+        "Open Cursor Usage is a single window with Overview, Models, and Users tabs.",
+        "Dark mode toggle, plus filter and sort on models and users.",
+        "Overview includes a usage graph for this billing cycle.",
+        "Users who spend unusually fast in 6–24 hours are marked as spikes.",
+        "Click a user to see their spend graph, models, tokens, and recent usage."
+      ]
+    },
+    {
       "version": "1.0.3",
       "title": "Global budget and model filters",
       "highlights": [

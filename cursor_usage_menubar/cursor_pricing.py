@@ -78,6 +78,17 @@ def _with_children(model: ModelSpend, children: tuple[ModelSpend, ...]) -> Model
     )
 
 
+def pool_cents(models: tuple[ModelSpend, ...]) -> tuple[int, int]:
+    cursor = 0
+    other = 0
+    for model in billable_models(models):
+        if is_cursor_pool_model(model.label, model.model_intent):
+            cursor += model.total_cents
+        else:
+            other += model.total_cents
+    return cursor, other
+
+
 def filter_models(
     models: tuple[ModelSpend, ...], pool: str
 ) -> tuple[ModelSpend, ...]:
@@ -93,6 +104,38 @@ def filter_models(
         if _matches_pool(model, pool):
             out.append(model)
     return tuple(out)
+
+
+def search_models(models: tuple[ModelSpend, ...], query: str) -> tuple[ModelSpend, ...]:
+    needle = query.strip().casefold()
+    if not needle:
+        return models
+    out: list[ModelSpend] = []
+    for model in models:
+        if model.is_auto and model.children:
+            kids = tuple(
+                child
+                for child in model.children
+                if needle in child.label.casefold() or needle in child.model_intent.casefold()
+            )
+            if kids or needle in model.label.casefold():
+                out.append(_with_children(model, kids or model.children))
+            continue
+        if needle in model.label.casefold() or needle in model.model_intent.casefold():
+            out.append(model)
+    return tuple(out)
+
+
+def sort_models(
+    models: tuple[ModelSpend, ...], sort_by: str = "usage", descending: bool = True
+) -> tuple[ModelSpend, ...]:
+    if sort_by == "name":
+        key = lambda m: m.label.casefold()
+    elif sort_by == "tokens":
+        key = lambda m: m.input_tokens + m.output_tokens
+    else:
+        key = lambda m: m.total_cents
+    return tuple(sorted(models, key=key, reverse=descending))
 
 
 def apply_model_filter(snapshot: UsageSnapshot, pool: str) -> UsageSnapshot:

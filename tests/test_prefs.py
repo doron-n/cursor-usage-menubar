@@ -33,6 +33,10 @@ class PrefsTest(unittest.TestCase):
             self.assertEqual(load_prefs(path)["scope"], "self")
             save_prefs({"scope": "team"}, path)
             self.assertEqual(load_prefs(path)["scope"], "team")
+            save_prefs({"theme": "light"}, path)
+            self.assertEqual(load_prefs(path)["theme"], "light")
+            save_prefs({"theme": "nope"}, path)
+            self.assertEqual(load_prefs(path)["theme"], "dark")
 
 
 if __name__ == "__main__":

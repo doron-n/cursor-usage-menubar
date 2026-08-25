@@ -10,7 +10,7 @@ CHANGELOG_PATH = ROOT / "docs" / "changelog.json"
 PAGES_URL = "https://doron-n.github.io/cursor-usage-menubar/"
 
 
-def notes_for(version: str, path: Path = CHANGELOG_PATH) -> str:
+def notes_for(version: str, path: Path = CHANGELOG_PATH, *, history: bool = False) -> str:
     fallback = (
         f"Cursor Usage {version} for Apple Silicon.\n\n"
         f"Download and install notes: {PAGES_URL}\n"
@@ -21,22 +21,35 @@ def notes_for(version: str, path: Path = CHANGELOG_PATH) -> str:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return fallback
-    for rel in data.get("releases") or []:
-        if not isinstance(rel, dict) or rel.get("version") != version:
-            continue
+    releases = [
+        rel
+        for rel in (data.get("releases") or [])
+        if isinstance(rel, dict) and rel.get("version")
+    ]
+    if not releases:
+        return fallback
+    start = next((i for i, rel in enumerate(releases) if rel.get("version") == version), None)
+    if start is None:
+        return fallback
+    chosen = releases[start:] if history else [releases[start]]
+    lines = [f"Cursor Usage {version} for Apple Silicon.", ""]
+    for index, rel in enumerate(chosen):
+        ver = str(rel.get("version") or "").strip()
         title = str(rel.get("title") or "").strip()
         highlights = [
             str(item).strip()
             for item in (rel.get("highlights") or [])
             if str(item).strip()
         ]
-        lines = [f"Cursor Usage {version} for Apple Silicon.", ""]
-        if title:
-            lines.extend([title, ""])
+        if index == 0:
+            if title:
+                lines.extend([title, ""])
+        else:
+            heading = f"{ver} — {title}" if title else ver
+            lines.extend(["", f"## {heading}", ""])
         lines.extend(f"- {item}" for item in highlights)
-        lines.extend(["", f"Download and install notes: {PAGES_URL}"])
-        return "\n".join(lines)
-    return fallback
+    lines.extend(["", f"Download and install notes: {PAGES_URL}"])
+    return "\n".join(lines)
 
 
 def read_version(path: Path = VERSION_PATH) -> str:
@@ -77,6 +90,11 @@ def main() -> None:
         const="current",
         help="print GitHub release notes for VERSION (default: current VERSION file)",
     )
+    parser.add_argument(
+        "--notes-history",
+        action="store_true",
+        help="with --notes, include every older changelog version after the selected one",
+    )
     args = parser.parse_args()
     if args.write:
         write_version(args.write)
@@ -84,7 +102,7 @@ def main() -> None:
         return
     if args.notes:
         version = read_version() if args.notes == "current" else args.notes
-        print(notes_for(version), end="")
+        print(notes_for(version, history=args.notes_history), end="")
         return
     if args.current:
         print(read_version())

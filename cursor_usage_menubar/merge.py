@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
+from cursor_usage_menubar.analytics import parse_events
 from cursor_usage_menubar.formatters import (
     child_label,
     is_auto_event,
@@ -311,4 +312,5 @@ def merge_snapshot(
         group_label=group_label,
         groups=tuple(groups) if groups else (),
         breakdown_kind=breakdown_kind if breakdown_kind in ("models", "members") else "models",
+        events=parse_events(filtered),
     )

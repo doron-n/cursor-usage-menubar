@@ -8,20 +8,20 @@
   <meta property="og:title" content="Cursor Usage">
   <meta property="og:description" content="See your Cursor budget in the menu bar. Global view, model filters, no tokens stored.">
   <meta property="og:type" content="website">
-  <meta name="theme-color" content="#070709">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23111114'/%3E%3Ctext x='16' y='22' text-anchor='middle' font-size='16' font-family='system-ui' fill='%2330d158'%3E%25%3C/text%3E%3C/svg%3E">
+  <meta name="theme-color" content="#070A12">
+  <link rel="icon" href="assets/app-icon.png">
   <style>
     :root {
       color-scheme: dark;
-      --bg: #070709;
-      --ink: #f4f4f5;
-      --muted: #9a9aa3;
-      --dim: #6e6e78;
+      --bg: #070A12;
+      --ink: #edf6f5;
+      --muted: #8d9aa6;
+      --dim: #6e7b86;
       --line: rgba(255, 255, 255, 0.08);
       --card: rgba(255, 255, 255, 0.035);
       --card-2: rgba(255, 255, 255, 0.055);
-      --green: #30d158;
-      --green-2: #3dff8a;
+      --green: #3DFFD2;
+      --green-2: #7cffea;
       --blue: #0a84ff;
       --shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
       --max: 1120px;
@@ -82,13 +82,8 @@
       width: 28px;
       height: 28px;
       border-radius: 8px;
-      background: linear-gradient(180deg, #1c1c20, #0d0d10);
+      object-fit: cover;
       border: 1px solid var(--line);
-      display: grid;
-      place-items: center;
-      color: var(--green);
-      font-size: 11px;
-      font-weight: 700;
     }
     nav {
       display: flex;
@@ -377,7 +372,7 @@
 <body>
   <div class="wrap">
     <header>
-      <div class="brand"><span class="mark">%</span> Cursor Usage</div>
+      <div class="brand"><img class="mark" src="assets/app-icon.png" alt=""> Cursor Usage</div>
       <nav>
         <a href="#notes">What’s new</a>
         <a href="https://github.com/doron-n/cursor-usage-menubar">GitHub</a>
@@ -460,6 +455,65 @@
   <script>
     const repo = "doron-n/cursor-usage-menubar";
     const fallbackNotes = {
+      "1.0.10": {
+        title: "Month graph, user mix, and mission-control window",
+        highlights: [
+          "Spend this cycle pages usage events from the first of the month.",
+          "Users pie falls back to aggregated model spend when events do not match.",
+          "User details match Cursor owningUser events for top models and graphs."
+        ]
+      },
+      "1.0.9": {
+        title: "Spend graph covers the whole month",
+        highlights: [
+          "Usage events are requested from the first of the month with string dates Cursor accepts.",
+          "The app pages through events instead of keeping only the newest thousand.",
+          "Spend this cycle can show days before today, not a single spike."
+        ]
+      },
+      "1.0.8": {
+        title: "Cursor vs other pie uses model totals",
+        highlights: [
+          "The Users pie uses aggregated model spend when events do not match a person.",
+          "Group views no longer show $0.00 for Cursor vs other.",
+          "Matched per-user events still win when they are available."
+        ]
+      },
+      "1.0.7": {
+        title: "User top models now match real Cursor events",
+        highlights: [
+          "User details read owningUser from Cursor usage events.",
+          "Top 3 models, the pie, and the spend graph now attach to the right person.",
+          "Event IDs are no longer mistaken for user IDs."
+        ]
+      },
+      "1.0.6": {
+        title: "Month graph, top models, and Cursor vs other pie",
+        highlights: [
+          "Spend this cycle starts on the first day of the month.",
+          "User details show the three most-used models.",
+          "A pie chart on Users and user details shows Cursor models vs other models."
+        ]
+      },
+      "1.0.5": {
+        title: "Mission-control UI, new icon, gauges and graphs",
+        highlights: [
+          "New app icon and a darker ink-and-cyan look with avatars, SF Symbols, and cards.",
+          "Overview opens on a usage gauge, spend tiles, and an area graph for the cycle.",
+          "Users and models are card rows — click a person for their graph and model mix.",
+          "Usage sort is percent of cap. The filter keeps what you type."
+        ]
+      },
+      "1.0.4": {
+        title: "One window, tabs, graph, and spend spikes",
+        highlights: [
+          "Open Cursor Usage is a single window with Overview, Models, and Users tabs.",
+          "Dark mode toggle, plus filter and sort on models and users.",
+          "Overview includes a usage graph for this billing cycle.",
+          "Users who spend unusually fast in 6–24 hours are marked as spikes.",
+          "Click a user to see their spend graph, models, tokens, and recent usage."
+        ]
+      },
       "1.0.3": {
         title: "Global budget and model filters",
         highlights: [
@@ -529,22 +583,31 @@
       }
     }
 
-    function render(releases, authored) {
+    function render(releases, authored, order) {
       const usable = (releases || []).filter(function (rel) {
         return !rel.draft && !rel.prerelease;
       });
-      if (!usable.length) {
+      const byVer = {};
+      usable.forEach(function (rel) {
+        byVer[versionOf(rel.tag_name)] = rel;
+      });
+      const versions = (order || []).filter(Boolean);
+      usable.forEach(function (rel) {
+        const ver = versionOf(rel.tag_name);
+        if (ver && versions.indexOf(ver) < 0) versions.push(ver);
+      });
+      if (!versions.length) {
         document.getElementById("latest").textContent =
           "Open GitHub Releases if notes are not listed yet.";
         return;
       }
-      const latest = usable[0];
-      const version = versionOf(latest.tag_name);
+      const version = versions[0];
+      const latest = byVer[version] || usable[0] || {};
       const asset = assetFor(latest);
       const copy = notesFor(version, authored);
       document.getElementById("version").innerHTML =
-        "Latest <strong>" + escapeHtml(latest.tag_name || version) + "</strong> · Apple Silicon · ad-hoc signed";
-      document.getElementById("btn-ver").textContent = latest.tag_name || "";
+        "Latest <strong>v" + escapeHtml(version) + "</strong> · Apple Silicon · ad-hoc signed";
+      document.getElementById("btn-ver").textContent = "v" + version;
       if (asset) document.getElementById("download").href = asset.browser_download_url;
 
       const highlights = copy && copy.highlights && copy.highlights.length
@@ -557,8 +620,8 @@
         '<p class="when">' + escapeHtml(dateLabel(latest.published_at)) + "</p>" +
         listHtml(highlights);
 
-      const older = usable.slice(1).map(function (rel) {
-        const ver = versionOf(rel.tag_name);
+      const older = versions.slice(1).map(function (ver) {
+        const rel = byVer[ver] || {};
         const oldCopy = notesFor(ver, authored);
         const oldTitle = (oldCopy && oldCopy.title) || rel.name || ver;
         const oldItems = (oldCopy && oldCopy.highlights) || [];
@@ -580,8 +643,8 @@
       }).join("");
       document.getElementById("previous").innerHTML = older;
       document.getElementById("notes-sub").textContent =
-        usable.length > 1
-          ? "What shipped in " + version + ", then the releases before it."
+        versions.length > 1
+          ? "What shipped in " + version + ", then every release before it."
           : "What shipped in " + version + ".";
     }
 
@@ -594,10 +657,17 @@
       }).catch(function () { return { releases: [] }; })
     ]).then(function (pair) {
       const authored = Object.assign({}, fallbackNotes);
-      (pair[1].releases || []).forEach(function (rel) {
+      const changelog = pair[1].releases || [];
+      changelog.forEach(function (rel) {
         if (rel && rel.version) authored[rel.version] = rel;
       });
-      render(pair[0], authored);
+      const order = changelog.map(function (rel) {
+        return rel && rel.version;
+      }).filter(Boolean);
+      Object.keys(fallbackNotes).forEach(function (ver) {
+        if (order.indexOf(ver) < 0) order.push(ver);
+      });
+      render(pair[0], authored, order);
     });
 
     if (!window.matchMedia || !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {

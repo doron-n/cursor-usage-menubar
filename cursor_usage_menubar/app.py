@@ -7,17 +7,15 @@ import rumps
 from AppKit import NSApplication, NSApplicationActivationPolicyRegular
 from rumps import events
 
-from cursor_usage_menubar.breakdown import refresh_if_visible, show_breakdown
+from cursor_usage_menubar.branding import apply_app_icon
+from cursor_usage_menubar.breakdown import refresh_if_visible
 from cursor_usage_menubar.client import fetch_usage, load_group_models
 from cursor_usage_menubar.cursor_pricing import cursor_model_forecast, forecast_menu_row
 from cursor_usage_menubar.formatters import dock_badge, dollars, menu_title
 from cursor_usage_menubar.models import UsageSnapshot
 from cursor_usage_menubar.prefs import load_prefs, save_prefs
-from cursor_usage_menubar.users import (
-    member_cap_percent,
-    refresh_users_if_visible,
-    show_users,
-)
+from cursor_usage_menubar.users import member_cap_percent
+from cursor_usage_menubar.workspace import refresh_workspace_if_visible, show_workspace
 
 DASHBOARD_URL = "https://cursor.com/dashboard/usage"
 _FETCH_ERROR_STATUS = "Open Cursor to refresh your session"
@@ -47,13 +45,16 @@ def snapshot_with_models(snapshot: UsageSnapshot) -> UsageSnapshot:
 def keep_loaded_models(
     snapshot: UsageSnapshot, previous: UsageSnapshot | None
 ) -> UsageSnapshot:
-    if snapshot.models or previous is None or not previous.models:
-        return snapshot
-    return replace(
-        snapshot,
-        models=previous.models,
-        top_model=snapshot.top_model or previous.top_model,
-    )
+    out = snapshot
+    if not snapshot.models and previous is not None and previous.models:
+        out = replace(
+            snapshot,
+            models=previous.models,
+            top_model=snapshot.top_model or previous.top_model,
+        )
+    if not out.events and previous is not None and previous.events:
+        out = replace(out, events=previous.events)
+    return out
 
 
 def set_dock_badge(percent: int | None) -> None:
@@ -86,6 +87,12 @@ def pin_status_item_title(nsapp, title: str) -> None:
 
 
 def handle_dock_reopen(nsapp) -> bool:
+    from cursor_usage_menubar.workspace import WorkspaceController, show_workspace
+
+    ctrl = WorkspaceController._instance
+    if ctrl is not None and ctrl.snapshot is not None:
+        show_workspace(ctrl.snapshot)
+        return True
     item = getattr(nsapp, "nsstatusitem", None)
     if item is None:
         return True
@@ -272,11 +279,7 @@ class CursorUsageApp(rumps.App):
             self.menu.add(item)
         self.menu.add(rumps.separator)
         self.menu.add(self._view_menu(snapshot))
-        if snapshot.selected_members():
-            self.menu.add(
-                rumps.MenuItem("View Users by Usage…", callback=self.view_users)
-            )
-        self.menu.add(rumps.MenuItem("View Model Breakdown…", callback=self.view_breakdown))
+        self.menu.add(rumps.MenuItem("Open Cursor Usage…", callback=self.view_workspace))
         self.menu.add(rumps.MenuItem("Refresh Now", callback=self.refresh_now))
         self.menu.add(rumps.MenuItem("Open Cursor Dashboard", callback=self.open_dashboard))
         self.menu.add(rumps.separator)
@@ -290,7 +293,7 @@ class CursorUsageApp(rumps.App):
         pin_status_item_title(getattr(self, "_nsapp", None), self.title or "—")
         self._rebuild_info(snapshot)
         refresh_if_visible(snapshot)
-        refresh_users_if_visible(snapshot)
+        refresh_workspace_if_visible(snapshot)
 
     @rumps.timer(300)
     def poll(self, _sender=None) -> None:
@@ -303,13 +306,19 @@ class CursorUsageApp(rumps.App):
         snap = snapshot_with_models(self._snapshot or _safe_fetch_usage())
         self._snapshot = snap
         self._rebuild_info(snap)
-        show_users(snap)
+        show_workspace(snap, "users")
 
     def view_breakdown(self, _sender=None) -> None:
         snap = snapshot_with_models(self._snapshot or _safe_fetch_usage())
         self._snapshot = snap
         self._rebuild_info(snap)
-        show_breakdown(snap)
+        show_workspace(snap, "models")
+
+    def view_workspace(self, _sender=None) -> None:
+        snap = snapshot_with_models(self._snapshot or _safe_fetch_usage())
+        self._snapshot = snap
+        self._rebuild_info(snap)
+        show_workspace(snap, "overview")
 
     def open_dashboard(self, _sender=None) -> None:
         webbrowser.open(DASHBOARD_URL)
@@ -326,5 +335,6 @@ class CursorUsageApp(rumps.App):
         NSApplication.sharedApplication().setActivationPolicy_(
             NSApplicationActivationPolicyRegular
         )
+        apply_app_icon()
         self.refresh_now()
         super().run(**kwargs)

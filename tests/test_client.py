@@ -11,6 +11,7 @@ from unittest.mock import patch
 import cursor_usage_menubar.client as client_mod
 from cursor_usage_menubar.client import (
     combine_aggregations,
+    fetch_filtered_usage_events,
     fetch_usage,
     filter_events_for_email,
     find_member_id,
@@ -128,7 +129,8 @@ class ClientTest(unittest.TestCase):
                     }
                 }
             if url.endswith("GetAggregatedUsageEvents"):
-                self.assertEqual(body, {"teamId": 7})
+                self.assertEqual(body.get("teamId"), 7)
+                self.assertIn("startDate", body)
                 return {
                     "aggregations": [
                         {"modelIntent": "auto-smart", "totalCents": 500, "inputTokens": 1, "outputTokens": 1}
@@ -445,6 +447,112 @@ class ClientTest(unittest.TestCase):
         agg = [body for url, body in bodies if url.endswith("GetAggregatedUsageEvents")]
         self.assertEqual(agg[0]["userId"], 349717204)
         self.assertIn("startDate", agg[0])
+
+
+class CycleWindowTest(unittest.TestCase):
+    def test_fetch_window_starts_on_first_of_month(self):
+        from datetime import datetime, timezone
+
+        from cursor_usage_menubar.analytics import month_start_date
+        from cursor_usage_menubar.client import _cycle_ms
+
+        start_ms, _end = _cycle_ms(
+            {
+                "billingCycleStart": "2026-08-17T00:00:00.000Z",
+                "billingCycleEnd": "2026-09-16T00:00:00.000Z",
+            }
+        )
+        month = month_start_date()
+        month_ms = int(
+            datetime.combine(month, datetime.min.time(), tzinfo=timezone.utc).timestamp()
+            * 1000
+        )
+        self.assertEqual(start_ms, month_ms)
+
+
+class FilteredEventsFetchTest(unittest.TestCase):
+    def test_sends_dates_as_strings_and_paginates(self):
+        calls = []
+
+        def fake_json_request(method, url, *, token=None, cookie=None, body=None):
+            calls.append(body)
+            page = body["page"]
+            if page == 1:
+                return {
+                    "totalUsageEventsCount": 3,
+                    "usageEventsDisplay": [
+                        {
+                            "timestamp": "1777680000000",
+                            "chargedCents": 100,
+                            "model": "composer-1",
+                        },
+                        {
+                            "timestamp": "1777593600000",
+                            "chargedCents": 200,
+                            "model": "grok-4.5",
+                        },
+                    ],
+                }
+            return {
+                "totalUsageEventsCount": 3,
+                "usageEventsDisplay": [
+                    {
+                        "timestamp": "1776988800000",
+                        "chargedCents": 300,
+                        "model": "sonnet",
+                    }
+                ],
+            }
+
+        with patch("cursor_usage_menubar.client.json_request", fake_json_request):
+            payload = fetch_filtered_usage_events(
+                token="tok",
+                base_body={"teamId": 7, "startDate": "1776988800000"},
+                page_size=2,
+            )
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0]["page"], 1)
+        self.assertEqual(calls[1]["page"], 2)
+        self.assertIsInstance(calls[0]["startDate"], str)
+        self.assertEqual(len(payload["usageEventsDisplay"]), 3)
+
+    def test_fetch_usage_sends_string_start_date(self):
+        session = Session(
+            access_token="tok",
+            sub="user",
+            email="ada@example.com",
+            team_id=7,
+            team_name="Acme",
+            plan_hint="enterprise",
+        )
+        bodies = []
+
+        def fake_json_request(method, url, *, token=None, cookie=None, body=None):
+            bodies.append((url, body))
+            if url.endswith("usage-summary"):
+                return {
+                    "billingCycleStart": "2026-08-17T00:00:00.000Z",
+                    "individualUsage": {
+                        "overall": {"used": 500, "limit": 1000, "remaining": 500}
+                    },
+                }
+            if url.endswith("GetFilteredUsageEvents"):
+                return {"usageEventsDisplay": []}
+            if url.endswith("GetPlanInfo"):
+                return {"planName": "Enterprise"}
+            return {}
+
+        with (
+            patch("cursor_usage_menubar.client.read_session", return_value=session),
+            patch("cursor_usage_menubar.client.json_request", fake_json_request),
+        ):
+            fetch_usage()
+        filtered = [
+            body for url, body in bodies if url.endswith("GetFilteredUsageEvents")
+        ]
+        self.assertTrue(filtered)
+        self.assertIsInstance(filtered[0]["startDate"], str)
+        self.assertTrue(filtered[0]["startDate"].isdigit())
 
 
 if __name__ == "__main__":

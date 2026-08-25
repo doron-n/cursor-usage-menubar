@@ -33,8 +33,8 @@ from cursor_usage_menubar.breakdown import (
 from cursor_usage_menubar.formatters import dollars
 from cursor_usage_menubar.models import GroupMember, UsageSnapshot
 
-SORT_BY_OPTIONS = ("usage", "name", "cap")
-SORT_BY_LABELS = ("Usage", "Name", "Cap")
+SORT_BY_OPTIONS = ("usage", "name", "cap", "recent")
+SORT_BY_LABELS = ("Usage", "Name", "Cap", "Recent")
 
 
 def users_layout_height(snapshot: UsageSnapshot) -> int:
@@ -44,15 +44,59 @@ def users_layout_height(snapshot: UsageSnapshot) -> int:
     return height + FOOTER_H + PAD
 
 
+def listed_members(snapshot: UsageSnapshot) -> tuple[GroupMember, ...]:
+    selected = snapshot.selected_members()
+    if selected:
+        return selected
+    seen: dict[int, GroupMember] = {}
+    for group in snapshot.groups:
+        for member in group.members:
+            seen.setdefault(member.user_id, member)
+    members = tuple(seen.values())
+    if snapshot.scope == "self" and snapshot.email:
+        email = snapshot.email.casefold()
+        mine = tuple(m for m in members if (m.email or "").casefold() == email)
+        return mine
+    return members
+
+
 def ordered_members(
     snapshot: UsageSnapshot,
     *,
     sort_by: str = "usage",
     descending: bool = True,
+    query: str = "",
+    spikes_only: bool = False,
+    recent_by_id: dict[int, int] | None = None,
+    burst_ids: frozenset[int] | None = None,
 ) -> tuple[GroupMember, ...]:
-    members = list(snapshot.selected_members())
+    members = list(listed_members(snapshot))
+    needle = query.strip().casefold()
+    if needle:
+        members = [
+            member
+            for member in members
+            if needle in (member.name or "").casefold()
+            or needle in (member.email or "").casefold()
+            or needle in str(member.user_id)
+        ]
+    if spikes_only:
+        flagged = burst_ids or frozenset()
+        members = [member for member in members if member.user_id in flagged]
     key = sort_by if sort_by in SORT_BY_OPTIONS else "usage"
-    members.sort(key=_member_sort_key(key), reverse=descending)
+    if key == "recent":
+        recent = recent_by_id or {}
+        members.sort(key=lambda m: (recent.get(m.user_id, 0), m.user_id), reverse=descending)
+    elif key == "usage":
+        with_cap = [m for m in members if m.limit_cents]
+        no_cap = [m for m in members if not m.limit_cents]
+        with_cap.sort(
+            key=lambda m: (member_cap_fraction(m), m.spend_cents, m.user_id),
+            reverse=descending,
+        )
+        members = with_cap + no_cap
+    else:
+        members.sort(key=_member_sort_key(key), reverse=descending)
     return tuple(members)
 
 

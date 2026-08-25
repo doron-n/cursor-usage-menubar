@@ -5,7 +5,11 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
 
+ASSET_DIR = os.path.join(ROOT, "cursor_usage_menubar", "assets")
+ICNS = os.path.join(ROOT, "packaging", "CursorUsage.icns")
 datas = collect_data_files("certifi")
+if os.path.isdir(ASSET_DIR):
+    datas.append((ASSET_DIR, "cursor_usage_menubar/assets"))
 hidden = collect_submodules("cursor_usage_menubar") + [
     "rumps",
     "AppKit",
@@ -54,7 +58,7 @@ app_version = os.environ.get("CURSOR_USAGE_VERSION", "1.0.0")
 app = BUNDLE(
     coll,
     name="Cursor Usage.app",
-    icon=None,
+    icon=ICNS if os.path.isfile(ICNS) else None,
     bundle_identifier="com.cursor-usage.menubar",
     info_plist={
         "CFBundleName": "Cursor Usage",

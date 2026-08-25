@@ -64,12 +64,45 @@ class UsersLayoutTest(unittest.TestCase):
             groups=(BillingGroup(9484, "xDome-R&D", members=members),),
         )
         names = lambda **kw: [m.name for m in ordered_members(snap, **kw)]
-        self.assertEqual(names(sort_by="usage", descending=True), ["Ada", "Cy", "Bob"])
-        self.assertEqual(names(sort_by="usage", descending=False), ["Bob", "Cy", "Ada"])
+        self.assertEqual(names(sort_by="usage", descending=True), ["Ada", "Bob", "Cy"])
+        self.assertEqual(names(sort_by="usage", descending=False), ["Bob", "Ada", "Cy"])
         self.assertEqual(names(sort_by="name", descending=False), ["Ada", "Bob", "Cy"])
         self.assertEqual(names(sort_by="name", descending=True), ["Cy", "Bob", "Ada"])
         self.assertEqual(names(sort_by="cap", descending=True), ["Bob", "Ada", "Cy"])
         self.assertEqual(names(sort_by="cap", descending=False), ["Cy", "Ada", "Bob"])
+
+    def test_usage_sort_is_percent_of_cap_not_dollars(self):
+        members = (
+            GroupMember(1, "yair@x.com", "Yair Zori", 91537, 120000),
+            GroupMember(2, "shlomi@x.com", "Shlomi Masuri", 74830, 90000),
+            GroupMember(3, "hike@x.com", "Hike Nalbandyan", 68074, 80000),
+            GroupMember(4, "lidor@x.com", "Lidor Achiyosef", 49451, 50000),
+            GroupMember(5, "none@x.com", "No Cap", 99999, None),
+        )
+        snap = replace(
+            _group_snap(1),
+            groups=(BillingGroup(9484, "xDome-R&D", members=members),),
+        )
+        names = lambda **kw: [m.name for m in ordered_members(snap, **kw)]
+        self.assertEqual(
+            names(sort_by="usage", descending=True),
+            ["Lidor Achiyosef", "Hike Nalbandyan", "Shlomi Masuri", "Yair Zori", "No Cap"],
+        )
+        self.assertEqual(
+            names(sort_by="usage", descending=False),
+            ["Yair Zori", "Shlomi Masuri", "Hike Nalbandyan", "Lidor Achiyosef", "No Cap"],
+        )
+
+    def test_filter_query_and_listed_members_for_global(self):
+        from cursor_usage_menubar.users import listed_members
+
+        names = [
+            m.name
+            for m in ordered_members(_group_snap(3), query="user 1")
+        ]
+        self.assertEqual(names, ["User 1"])
+        global_snap = replace(_group_snap(2), scope="team", group_id=None)
+        self.assertEqual(len(listed_members(global_snap)), 2)
 
     def test_member_percent_is_of_personal_cap_not_group_total(self):
         member = GroupMember(1, "yair.z@claroty.com", "Yair Zori", 91537, 100000)

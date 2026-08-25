@@ -87,8 +87,9 @@ def add_forecast_section(host, card, snapshot: UsageSnapshot, required: bool = F
         if forecast.percent is not None:
             fraction = min(1.0, forecast.percent / 100.0)
     host._label(card, title, 16, 98, 508, 18, size=12, secondary=True)
+    bar_w = max(80, int(card.bounds().size.width) - 32)
     bar = BarView.alloc().initWithFrame_fraction_color_(
-        NSMakeRect(16, 118, WINDOW_WIDTH - PAD * 2 - 48, 14),
+        NSMakeRect(16, 118, bar_w, 14),
         fraction,
         NSColor.systemTealColor(),
     )
@@ -123,8 +124,9 @@ def fill_summary_card(
     fraction = 0.0
     if snapshot.percent is not None:
         fraction = min(1.0, snapshot.percent / 100.0)
+    bar_w = max(80, int(card.bounds().size.width) - 32)
     bar = BarView.alloc().initWithFrame_fraction_color_(
-        NSMakeRect(16, 74, WINDOW_WIDTH - PAD * 2 - 48, 14),
+        NSMakeRect(16, 74, bar_w, 14),
         fraction,
         usage_bar_color(snapshot.percent),
     )

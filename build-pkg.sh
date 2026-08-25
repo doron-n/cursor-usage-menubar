@@ -85,7 +85,7 @@ if [[ "${PKG_PUBLISH:-}" == "1" ]]; then
     echo "gh is required to publish a GitHub Release" >&2
     exit 1
   fi
-  notes="$("$PY" -m cursor_usage_menubar.app_version --notes "$VERSION")"
+  notes="$("$PY" -m cursor_usage_menubar.app_version --notes-history --notes "$VERSION")"
   if git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git remote get-url origin >/dev/null 2>&1; then
     git add VERSION
     if ! git diff --cached --quiet; then
