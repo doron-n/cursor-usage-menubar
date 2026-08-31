@@ -123,6 +123,102 @@ class WorkspaceTest(unittest.TestCase):
         self.assertIn("DATA VIEW", joined)
         self.assertNotIn("No permission", joined)
 
+    def test_settings_can_check_multiple_groups(self):
+        from dataclasses import replace
+
+        ada = GroupMember(1, "ada@x.com", "Ada", 1000, 10000)
+        bob = GroupMember(2, "bob@x.com", "Bob", 800, 10000)
+        ctrl = self._controller()
+        ctrl.snapshot = replace(
+            ctrl.snapshot,
+            scope="group",
+            group_id=1,
+            group_ids=(1, 2),
+            group_label="Eng",
+            groups=(
+                BillingGroup(1, "Eng", 1000, 10000, (ada,)),
+                BillingGroup(2, "Platform", 800, 10000, (bob,)),
+            ),
+        )
+        ctrl.tab = "settings"
+        ctrl._ensure_window()
+        ctrl.render()
+        titles = []
+        checks = []
+
+        def walk(view):
+            for sub in view.subviews():
+                title = getattr(sub, "title", None)
+                if callable(title):
+                    titles.append(str(title()))
+                getter = getattr(sub, "stringValue", None)
+                if callable(getter):
+                    titles.append(str(getter()))
+                if sub.__class__.__name__ == "NSButton" and int(getattr(sub, "state", lambda: 0)()) in (0, 1):
+                    if "Eng" in str(title() if callable(title) else "") or "Platform" in str(
+                        title() if callable(title) else ""
+                    ):
+                        checks.append((str(title()), int(sub.state())))
+                walk(sub)
+
+        walk(ctrl.window.contentView())
+        joined = "\n".join(titles)
+        self.assertIn("Groups", joined)
+        self.assertIn("Eng (1)", joined)
+        self.assertIn("Platform (2)", joined)
+        self.assertIn("Eng + Platform", joined)
+        self.assertIn("Select all", joined)
+        self.assertIn("Deselect all", joined)
+        self.assertIn("Apply", joined)
+
+    def test_group_checks_wait_for_apply(self):
+        from dataclasses import replace
+        from unittest.mock import patch
+
+        ada = GroupMember(1, "ada@x.com", "Ada", 1000, 10000)
+        bob = GroupMember(2, "bob@x.com", "Bob", 800, 10000)
+        ctrl = self._controller()
+        ctrl.snapshot = replace(
+            ctrl.snapshot,
+            scope="group",
+            group_id=1,
+            group_ids=(1,),
+            groups=(
+                BillingGroup(1, "Eng", 1000, 10000, (ada,)),
+                BillingGroup(2, "Platform", 800, 10000, (bob,)),
+            ),
+        )
+        ctrl.tab = "settings"
+        ctrl._ensure_window()
+        ctrl.render()
+        boxes = []
+
+        def walk(view):
+            for sub in view.subviews():
+                title = getattr(sub, "title", None)
+                if callable(title) and str(title()) in ("Eng (1)", "Platform (2)"):
+                    boxes.append(sub)
+                walk(sub)
+
+        walk(ctrl.window.contentView())
+        platform = next(box for box in boxes if box.title() == "Platform (2)")
+        platform.setState_(1)
+        with patch.object(ctrl, "_request_refresh") as refresh:
+            ctrl.groupCheckChanged_(platform)
+            refresh.assert_not_called()
+            ctrl.selectAllGroups_(None)
+            refresh.assert_not_called()
+            self.assertEqual(set(ctrl._pending_group_ids or []), {1, 2})
+            ctrl.deselectAllGroups_(None)
+            refresh.assert_not_called()
+            self.assertEqual(ctrl._pending_group_ids, [])
+            platform.setState_(1)
+            ctrl.groupCheckChanged_(platform)
+            with patch("cursor_usage_menubar.workspace.save_prefs") as saved:
+                ctrl.applyGroups_(None)
+            saved.assert_called()
+            refresh.assert_called_once()
+
     def test_window_shows_app_version(self):
         from cursor_usage_menubar.app_version import current_version
 

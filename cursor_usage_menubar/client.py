@@ -12,7 +12,12 @@ from datetime import datetime, timezone
 
 import certifi
 
-from cursor_usage_menubar.analytics import member_events, month_start_date, parse_events
+from cursor_usage_menubar.analytics import (
+    events_for_members,
+    member_events,
+    month_start_date,
+    parse_events,
+)
 from cursor_usage_menubar.auth import read_session, session_cookie
 from cursor_usage_menubar.merge import aggregations_from_filtered, merge_snapshot
 from cursor_usage_menubar.models import (
@@ -490,6 +495,7 @@ def load_group_models(snapshot: UsageSnapshot) -> UsageSnapshot:
         filtered={"usageEventsDisplay": []},
         plan_info={"planName": snapshot.plan_name},
         group_id=snapshot.group_id,
+        group_ids=snapshot.group_ids or snapshot.selected_group_ids(),
         group_label=snapshot.group_label,
         groups=snapshot.groups,
         scope="group",
@@ -584,11 +590,17 @@ def has_admin_access(session: Session, *, token: str, cookie: str) -> bool:
     return is_admin_role(session.team_role)
 
 
-def fetch_usage(scope: str = "team", group_id: int | None = None) -> UsageSnapshot:
+def fetch_usage(
+    scope: str = "team",
+    group_id: int | None = None,
+    group_ids: tuple[int, ...] | list[int] | None = None,
+) -> UsageSnapshot:
+    from cursor_usage_menubar.prefs import normalize_group_ids
+
     if scope not in ("team", "self", "group"):
         scope = "team"
-    if scope != "group":
-        group_id = None
+    ids = normalize_group_ids(group_id, group_ids) if scope == "group" else ()
+    group_id = ids[0] if ids else None
     session = read_session()
     if session is None:
         return UsageSnapshot.empty("Open Cursor to refresh your session")
@@ -629,20 +641,22 @@ def fetch_usage(scope: str = "team", group_id: int | None = None) -> UsageSnapsh
     plan_info = dashboard_request(
         "GetPlanInfo", token=token, cookie=cookie, body={}
     )
-    selected = None
+    selected_groups = [group for group in groups if group.id in ids]
     group_label = None
-    if group_id is not None:
-        selected = next((g for g in groups if g.id == group_id), None)
-        group_label = selected.name if selected else str(group_id)
+    if selected_groups:
+        names = [group.name or str(group.id) for group in selected_groups]
+        group_label = " + ".join(names) if len(names) > 1 else selected_groups[0].name
+    elif group_id is not None:
+        group_label = str(group_id)
     spend_override = None
     limit_override = None
     breakdown_kind = "models"
     event_source = filtered
-    if scope == "group" and selected is not None:
-        spend_override = selected.spend_cents
-        limit_override = selected.limit_cents
-        aggregated = {"aggregations": [], "totalCostCents": selected.spend_cents or 0}
-        filtered = {"usageEventsDisplay": []}
+    if scope == "group" and selected_groups:
+        spend_override = sum(group.spend_cents or 0 for group in selected_groups)
+        limits = [group.limit_cents for group in selected_groups if group.limit_cents]
+        limit_override = sum(limits) if limits else None
+        aggregated = {"aggregations": [], "totalCostCents": spend_override or 0}
     elif scope == "self" and self_member is not None:
         spend_override = self_member.spend_cents
         limit_override = self_member.limit_cents
@@ -663,6 +677,7 @@ def fetch_usage(scope: str = "team", group_id: int | None = None) -> UsageSnapsh
         filtered=filtered,
         plan_info=plan_info,
         group_id=group_id,
+        group_ids=ids,
         group_label=group_label,
         groups=groups,
         scope=scope,
@@ -671,5 +686,9 @@ def fetch_usage(scope: str = "team", group_id: int | None = None) -> UsageSnapsh
         breakdown_kind=breakdown_kind,
     )
     if event_source is not filtered:
-        return replace(snapshot, events=parse_events(event_source))
+        snapshot = replace(snapshot, events=parse_events(event_source))
+    if scope == "group" and snapshot.selected_members():
+        snapshot = replace(
+            snapshot, events=events_for_members(snapshot.events, snapshot.selected_members())
+        )
     return snapshot

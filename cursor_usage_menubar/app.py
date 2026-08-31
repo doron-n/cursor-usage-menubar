@@ -49,14 +49,18 @@ def _safe_fetch_usage() -> UsageSnapshot:
     menu bar app."""
     try:
         prefs = load_prefs()
-        return fetch_usage(scope=prefs["scope"], group_id=prefs.get("group_id"))
+        return fetch_usage(
+            scope=prefs["scope"],
+            group_id=prefs.get("group_id"),
+            group_ids=prefs.get("group_ids"),
+        )
     except Exception:
         return UsageSnapshot.empty(_FETCH_ERROR_STATUS)
 
 
 def snapshot_with_models(snapshot: UsageSnapshot) -> UsageSnapshot:
     """Group spend snapshots omit models until this extra fetch runs."""
-    if snapshot.scope == "group" and snapshot.group_id is not None:
+    if snapshot.scope == "group" and snapshot.selected_group_ids():
         try:
             return load_group_models(snapshot)
         except Exception:

@@ -38,6 +38,23 @@ class PrefsTest(unittest.TestCase):
             save_prefs({"theme": "nope"}, path)
             self.assertEqual(load_prefs(path)["theme"], "dark")
 
+    def test_group_ids_round_trip_and_legacy_single_id(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "prefs.json"
+            save_prefs({"scope": "group", "group_ids": [10, 10, "20", 30]}, path)
+            loaded = load_prefs(path)
+            self.assertEqual(loaded["scope"], "group")
+            self.assertEqual(loaded["group_ids"], [10, 20, 30])
+            self.assertEqual(loaded["group_id"], 10)
+            save_prefs({"scope": "self"}, path)
+            loaded = load_prefs(path)
+            self.assertEqual(loaded["scope"], "self")
+            self.assertEqual(loaded["group_ids"], [10, 20, 30])
+            path.write_text('{"scope": "group", "group_id": 9485}\n')
+            loaded = load_prefs(path)
+            self.assertEqual(loaded["group_ids"], [9485])
+            self.assertEqual(loaded["group_id"], 9485)
+
     def test_refresh_and_dock_badge_round_trip(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "prefs.json"

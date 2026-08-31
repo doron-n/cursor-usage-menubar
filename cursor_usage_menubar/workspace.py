@@ -63,7 +63,7 @@ from cursor_usage_menubar.cursor_pricing import (
     sort_models,
 )
 from cursor_usage_menubar.formatters import actual_usage_caption, dollars
-from cursor_usage_menubar.models import UsageSnapshot
+from cursor_usage_menubar.models import BillingGroup, UsageSnapshot
 from cursor_usage_menubar.prefs import REFRESH_SECONDS, load_prefs, save_prefs
 from cursor_usage_menubar.theme import appearance_name, as_theme, theme_color, usage_tone
 from cursor_usage_menubar.ui import (
@@ -153,6 +153,9 @@ class WorkspaceController(NSObject):
         self._view_choices: list[tuple[str, int | None]] = []
         self._refresh_choices: list[int] = []
         self._group_id_field = None
+        self._pending_group_ids: list[int] | None = None
+        self._group_checks: list = []
+        self._draft_view: str | None = None
         return self
 
     @classmethod
@@ -242,11 +245,17 @@ class WorkspaceController(NSObject):
         idx = int(sender.indexOfSelectedItem())
         if not (0 <= idx < len(self._view_choices)):
             return
-        scope, group_id = self._view_choices[idx]
-        payload = {"scope": scope}
+        scope, _group_id = self._view_choices[idx]
+        self._draft_view = scope
         if scope == "group":
-            payload["group_id"] = group_id
-        save_prefs(payload)
+            prefs = load_prefs()
+            ids = list(prefs.get("group_ids") or [])
+            if not ids and prefs.get("group_id") is not None:
+                ids = [prefs["group_id"]]
+            self._pending_group_ids = ids
+            self.render()
+            return
+        save_prefs({"scope": scope})
         self._request_refresh()
 
     def refreshPrefChanged_(self, sender):
@@ -263,13 +272,46 @@ class WorkspaceController(NSObject):
         field = self._group_id_field
         text = str(field.stringValue() if field is not None else "").strip()
         if not text:
-            save_prefs({"scope": "team"})
-            self._request_refresh()
             return
         try:
-            save_prefs({"scope": "group", "group_id": int(text)})
+            added = int(text)
         except ValueError:
             return
+        ids = list(self._pending_group_ids or [])
+        if added not in ids:
+            ids.append(added)
+        self._pending_group_ids = ids
+        self._draft_view = "group"
+        self.render()
+
+    def groupCheckChanged_(self, sender):
+        gid = int(sender.tag())
+        ids = list(self._pending_group_ids or [])
+        if int(sender.state()) == 1:
+            if gid not in ids:
+                ids.append(gid)
+        else:
+            ids = [item for item in ids if item != gid]
+        self._pending_group_ids = ids
+
+    def selectAllGroups_(self, _sender):
+        ids = [int(box.tag()) for box in self._group_checks]
+        self._pending_group_ids = ids
+        for box in self._group_checks:
+            box.setState_(1)
+
+    def deselectAllGroups_(self, _sender):
+        self._pending_group_ids = []
+        for box in self._group_checks:
+            box.setState_(0)
+
+    def applyGroups_(self, _sender):
+        ids = list(self._pending_group_ids or [])
+        if ids:
+            save_prefs({"scope": "group", "group_ids": ids})
+        else:
+            save_prefs({"scope": "team", "group_ids": []})
+        self._draft_view = None
         self._request_refresh()
 
     def openDashboard_(self, _sender):
@@ -385,7 +427,9 @@ class WorkspaceController(NSObject):
                 ),
             )
         elif self.tab == "settings":
-            height += 720
+            show_groups = (self._draft_view or snap.scope) == "group"
+            extra = (36 + 28 * len(snap.groups)) if show_groups else 0
+            height += 720 + extra
         elif self.tab == "models":
             models = self._visible_models(snap)
             height += 48
@@ -570,62 +614,89 @@ class WorkspaceController(NSObject):
 
     @python_method
     def _view_picker(self, doc, snap, y, width):
-        card = make_card(NSMakeRect(PAD, y, width - PAD * 2, 118), self.theme, 16)
+        scope = self._draft_view or (snap.scope if snap.scope in ("self", "team", "group") else "self")
+        if scope == "group" and self._pending_group_ids is None:
+            self._pending_group_ids = list(snap.selected_group_ids())
+        selected_ids = set(self._pending_group_ids or []) if scope == "group" else set()
+        groups = list(snap.groups)
+        for gid in selected_ids:
+            if not any(group.id == gid for group in groups):
+                groups.append(BillingGroup(gid, str(gid)))
+        extra = (36 + 28 * len(groups)) if scope == "group" else 0
+        card_h = 118 + extra
+        card = make_card(NSMakeRect(PAD, y, width - PAD * 2, card_h), self.theme, 16)
         self._label(card, "Which spend this window shows", 18, 12, 400, 16, size=12, secondary=True)
-        choices: list[tuple[str, int | None]] = [("self", None), ("team", None)]
-        titles = ["Myself only", "Global"]
-        selected = 0
-        scope = snap.scope if snap.scope in ("self", "team", "group") else "self"
-        group_id = snap.group_id if scope == "group" else None
-        if scope == "team":
-            selected = 1
-        seen: set[int] = set()
-        for group in snap.groups:
-            seen.add(group.id)
-            titles.append(f"{group.name} ({group.id})" if group.name else str(group.id))
-            choices.append(("group", group.id))
-            if scope == "group" and group_id == group.id:
-                selected = len(choices) - 1
-        if group_id is not None and group_id not in seen:
-            titles.append(str(group_id))
-            choices.append(("group", group_id))
-            selected = len(choices) - 1
-        self._view_choices = choices
+        self._view_choices = [("self", None), ("team", None), ("group", None)]
         popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
             NSMakeRect(18, 34, 280, 26), False
         )
-        popup.addItemsWithTitles_(titles)
-        popup.selectItemAtIndex_(selected)
+        popup.addItemsWithTitles_(["Myself only", "Global", "Groups"])
+        popup.selectItemAtIndex_(2 if scope == "group" else (1 if scope == "team" else 0))
         popup.setTarget_(self)
         popup.setAction_("viewPrefChanged:")
         card.addSubview_(popup)
         field = NSTextField.alloc().initWithFrame_(NSMakeRect(310, 36, 140, 22))
-        if group_id is not None:
-            field.setStringValue_(str(group_id))
+        if selected_ids:
+            field.setStringValue_(", ".join(str(gid) for gid in (self._pending_group_ids or [])))
         try:
             field.setPlaceholderString_("Group ID")
         except Exception:
             pass
         card.addSubview_(field)
         self._group_id_field = field
-        apply = NSButton.alloc().initWithFrame_(NSMakeRect(458, 34, 72, 26))
-        apply.setTitle_("Use ID")
-        apply.setBezelStyle_(1)
-        apply.setTarget_(self)
-        apply.setAction_("applyGroupId:")
-        card.addSubview_(apply)
+        use_id = NSButton.alloc().initWithFrame_(NSMakeRect(458, 34, 72, 26))
+        use_id.setTitle_("Use ID")
+        use_id.setBezelStyle_(1)
+        use_id.setTarget_(self)
+        use_id.setAction_("applyGroupId:")
+        card.addSubview_(use_id)
+        hint_y = 72
+        self._group_checks = []
+        if scope == "group":
+            all_btn = NSButton.alloc().initWithFrame_(NSMakeRect(18, 68, 90, 26))
+            all_btn.setTitle_("Select all")
+            all_btn.setBezelStyle_(1)
+            all_btn.setTarget_(self)
+            all_btn.setAction_("selectAllGroups:")
+            card.addSubview_(all_btn)
+            none_btn = NSButton.alloc().initWithFrame_(NSMakeRect(114, 68, 104, 26))
+            none_btn.setTitle_("Deselect all")
+            none_btn.setBezelStyle_(1)
+            none_btn.setTarget_(self)
+            none_btn.setAction_("deselectAllGroups:")
+            card.addSubview_(none_btn)
+            apply = NSButton.alloc().initWithFrame_(NSMakeRect(458, 68, 72, 26))
+            apply.setTitle_("Apply")
+            apply.setBezelStyle_(1)
+            apply.setTarget_(self)
+            apply.setAction_("applyGroups:")
+            card.addSubview_(apply)
+            for index, group in enumerate(groups):
+                box = NSButton.alloc().initWithFrame_(
+                    NSMakeRect(18, 104 + index * 28, width - PAD * 2 - 50, 24)
+                )
+                box.setButtonType_(NSButtonTypeSwitch)
+                title = f"{group.name} ({group.id})" if group.name else str(group.id)
+                box.setTitle_(title)
+                box.setState_(1 if group.id in selected_ids else 0)
+                box.setTag_(int(group.id))
+                box.setTarget_(self)
+                box.setAction_("groupCheckChanged:")
+                card.addSubview_(box)
+                self._group_checks.append(box)
+            hint_y = 104 + 28 * len(groups)
         self._label(
             card,
-            "Myself, Global, or a billing group. Use ID if the group is missing from the list.",
+            "Myself, Global, or Groups. Check groups, then Apply to refresh this window.",
             18,
-            72,
+            hint_y,
             width - PAD * 2 - 36,
             32,
             size=11,
             secondary=True,
         )
         doc.addSubview_(card)
-        return y + 134
+        return y + card_h + 16
 
     @python_method
     def _refresh_picker(self, doc, prefs, y, width):

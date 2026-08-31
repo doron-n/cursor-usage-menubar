@@ -409,6 +409,102 @@ class ClientTest(unittest.TestCase):
         agg = [body for url, body in bodies if url.endswith("GetAggregatedUsageEvents")]
         self.assertTrue(not agg or "groupId" not in (agg[0] or {}))
 
+    def test_fetch_usage_combines_selected_groups(self):
+        session = Session(
+            access_token="tok",
+            sub="user",
+            email="ada@example.com",
+            team_id=7,
+            team_name="Acme",
+            plan_hint="enterprise",
+            team_role="admin",
+        )
+
+        def fake_json_request(method, url, *, token=None, cookie=None, body=None):
+            if url.endswith("GetGroups"):
+                return {
+                    "groups": [
+                        {
+                            "id": 1,
+                            "name": "Eng",
+                            "spendCents": 1000,
+                            "limitCents": 5000,
+                            "members": [
+                                {
+                                    "userId": 1,
+                                    "name": "Ada",
+                                    "email": "ada@example.com",
+                                    "spendCents": 1000,
+                                    "effectivePerUserLimitDollars": 50,
+                                }
+                            ],
+                        },
+                        {
+                            "id": 2,
+                            "name": "Platform",
+                            "spendCents": 400,
+                            "limitCents": 5000,
+                            "members": [
+                                {
+                                    "userId": 2,
+                                    "name": "Bob",
+                                    "email": "bob@example.com",
+                                    "spendCents": 400,
+                                    "effectivePerUserLimitDollars": 50,
+                                }
+                            ],
+                        },
+                    ]
+                }
+            if "usage-summary" in url:
+                return {
+                    "individualUsage": {
+                        "overall": {"used": 40000, "limit": 50000, "remaining": 10000}
+                    }
+                }
+            if url.endswith("GetAggregatedUsageEvents"):
+                return {"aggregations": [], "totalCostCents": 0}
+            if url.endswith("GetFilteredUsageEvents"):
+                return {
+                    "usageEvents": [
+                        {
+                            "timestamp": "2026-08-25T12:00:00Z",
+                            "userEmail": "ada@example.com",
+                            "userId": 1,
+                            "chargedCents": 80,
+                            "model": "composer-1",
+                        },
+                        {
+                            "timestamp": "2026-08-25T13:00:00Z",
+                            "userEmail": "bob@example.com",
+                            "userId": 2,
+                            "chargedCents": 20,
+                            "model": "sonnet",
+                        },
+                        {
+                            "timestamp": "2026-08-25T14:00:00Z",
+                            "userEmail": "cam@example.com",
+                            "userId": 3,
+                            "chargedCents": 999,
+                            "model": "opus",
+                        },
+                    ]
+                }
+            if url.endswith("GetPlanInfo"):
+                return {"planName": "Enterprise"}
+            return {}
+
+        with (
+            patch("cursor_usage_menubar.client.read_session", return_value=session),
+            patch("cursor_usage_menubar.client.json_request", fake_json_request),
+        ):
+            snap = fetch_usage(scope="group", group_ids=(1, 2))
+        self.assertEqual(snap.spent_cents, 1400)
+        self.assertEqual(snap.limit_cents, 10000)
+        self.assertEqual({m.name for m in snap.selected_members()}, {"Ada", "Bob"})
+        self.assertEqual(snap.view_label(), "Eng + Platform")
+        self.assertEqual(len(snap.events), 2)
+
     def test_combine_aggregations_sums_models_across_users(self):
         combined = combine_aggregations(
             [

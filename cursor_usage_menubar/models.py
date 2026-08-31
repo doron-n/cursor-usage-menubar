@@ -71,25 +71,45 @@ class UsageSnapshot:
     top_model: ModelSpend | None
     scope: str = "team"
     group_id: int | None = None
+    group_ids: tuple[int, ...] = ()
     group_label: str | None = None
     groups: tuple[BillingGroup, ...] = ()
     breakdown_kind: str = "models"
     events: tuple[UsageEvent, ...] = ()
 
-    def selected_members(self) -> tuple[GroupMember, ...]:
-        if self.scope != "group" or self.group_id is None:
-            return ()
-        for group in self.groups:
-            if group.id == self.group_id:
-                return group.members
+    def selected_group_ids(self) -> tuple[int, ...]:
+        if self.group_ids:
+            return self.group_ids
+        if self.group_id is not None:
+            return (self.group_id,)
         return ()
+
+    def selected_members(self) -> tuple[GroupMember, ...]:
+        ids = self.selected_group_ids()
+        if self.scope != "group" or not ids:
+            return ()
+        seen: dict[int, GroupMember] = {}
+        for group in self.groups:
+            if group.id not in ids:
+                continue
+            for member in group.members:
+                seen.setdefault(member.user_id, member)
+        return tuple(seen.values())
 
     def view_label(self) -> str:
         if self.scope == "self":
             return "Myself only"
         if self.scope == "team":
             return "Global"
-        if self.scope == "group" or self.group_id is not None:
+        if self.scope == "group" or self.selected_group_ids():
+            names: list[str] = []
+            for gid in self.selected_group_ids():
+                group = next((item for item in self.groups if item.id == gid), None)
+                names.append(group.name if group and group.name else str(gid))
+            if len(names) >= 2:
+                if len(names) == 2:
+                    return f"{names[0]} + {names[1]}"
+                return f"{names[0]} + {names[1]} + {len(names) - 2} more"
             label = self.group_label or (
                 str(self.group_id) if self.group_id is not None else "Group"
             )
@@ -99,7 +119,7 @@ class UsageSnapshot:
                 and self.group_label != str(self.group_id)
             ):
                 return f"{self.group_label} ({self.group_id})"
-            return label
+            return names[0] if names else label
         return "Global"
 
     @staticmethod

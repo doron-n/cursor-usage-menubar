@@ -102,6 +102,26 @@ class UsersLayoutTest(unittest.TestCase):
             ["Yair Zori", "Shlomi Masuri", "Hike Nalbandyan", "Lidor Achiyosef", "No Cap"],
         )
 
+    def test_listed_members_unions_selected_groups(self):
+        from cursor_usage_menubar.users import listed_members
+
+        ada = GroupMember(1, "ada@x.com", "Ada", 100, 1000)
+        bob = GroupMember(2, "bob@x.com", "Bob", 200, 1000)
+        ada_again = GroupMember(1, "ada@x.com", "Ada", 150, 1000)
+        snap = replace(
+            _group_snap(1),
+            group_id=1,
+            group_ids=(1, 2),
+            group_label="Eng",
+            groups=(
+                BillingGroup(1, "Eng", 100, 1000, (ada,)),
+                BillingGroup(2, "Platform", 200, 1000, (bob, ada_again)),
+            ),
+        )
+        members = listed_members(snap)
+        self.assertEqual([m.user_id for m in members], [1, 2])
+        self.assertEqual(snap.view_label(), "Eng + Platform")
+
     def test_filter_query_and_listed_members_for_global(self):
         from cursor_usage_menubar.users import listed_members
 

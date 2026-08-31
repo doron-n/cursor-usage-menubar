@@ -35,7 +35,15 @@ def render(snapshot: UsageSnapshot) -> str:
 
 def main() -> None:
     prefs = load_prefs()
-    print(render(fetch_usage(scope=prefs["scope"], group_id=prefs.get("group_id"))))
+    print(
+        render(
+            fetch_usage(
+                scope=prefs["scope"],
+                group_id=prefs.get("group_id"),
+                group_ids=prefs.get("group_ids"),
+            )
+        )
+    )
 
 
 if __name__ == "__main__":

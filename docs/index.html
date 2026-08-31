@@ -476,12 +476,12 @@
           Percent in the bar. Global budget, groups, and model filters one click away.
         </p>
         <div class="cta">
-          <a class="btn" id="download" href="https://github.com/doron-n/cursor-usage-menubar/releases/download/v1.0.19/CursorUsage-1.0.19-arm64.pkg">
-            Download installer <small id="btn-ver">v1.0.19</small>
+          <a class="btn" id="download" href="https://github.com/doron-n/cursor-usage-menubar/releases/download/v1.0.21/CursorUsage-1.0.21-arm64.pkg">
+            Download installer <small id="btn-ver">v1.0.21</small>
           </a>
           <div class="dl-meta">
             <div class="dl-count" id="downloads" hidden></div>
-            <div class="meta" id="version">Latest <strong>v1.0.19</strong> · Apple Silicon · ad-hoc signed</div>
+            <div class="meta" id="version">Latest <strong>v1.0.21</strong> · Apple Silicon · ad-hoc signed</div>
           </div>
         </div>
         <ol class="install">
@@ -579,6 +579,22 @@
   <script>
     const repo = "doron-n/cursor-usage-menubar";
     const fallbackNotes = {
+      "1.0.21": {
+        title: "Apply group picks when you are ready",
+        highlights: [
+          "Checking groups no longer refreshes until you click Apply.",
+          "Select all and Deselect all set the checkboxes without fetching.",
+          "Myself and Global still apply as soon as you pick them."
+        ]
+      },
+      "1.0.20": {
+        title: "Select more than one billing group",
+        highlights: [
+          "Settings → Groups lets you check a few billing groups at once.",
+          "Overview, Users, Models, and the budget follow the combined selection.",
+          "Myself and Global stay one-click exclusive views."
+        ]
+      },
       "1.0.19": {
         title: "Users pie matches official spend",
         highlights: [

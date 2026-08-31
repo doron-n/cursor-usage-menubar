@@ -1,6 +1,24 @@
 {
   "releases": [
     {
+      "version": "1.0.21",
+      "title": "Apply group picks when you are ready",
+      "highlights": [
+        "Checking groups no longer refreshes until you click Apply.",
+        "Select all and Deselect all set the checkboxes without fetching.",
+        "Myself and Global still apply as soon as you pick them."
+      ]
+    },
+    {
+      "version": "1.0.20",
+      "title": "Select more than one billing group",
+      "highlights": [
+        "Settings → Groups lets you check a few billing groups at once.",
+        "Overview, Users, Models, and the budget follow the combined selection.",
+        "Myself and Global stay one-click exclusive views."
+      ]
+    },
+    {
       "version": "1.0.19",
       "title": "Users pie matches official spend",
       "highlights": [

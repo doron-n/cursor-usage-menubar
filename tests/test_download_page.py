@@ -12,7 +12,7 @@ class DownloadPageTest(unittest.TestCase):
         data = json.loads(CHANGELOG.read_text(encoding="utf-8"))
         versions = [rel["version"] for rel in data["releases"]]
         self.assertEqual(versions[0], (ROOT / "VERSION").read_text(encoding="utf-8").strip())
-        self.assertEqual(versions[0], "1.0.19")
+        self.assertEqual(versions[0], "1.0.21")
         self.assertIn("1.0.9", versions)
         self.assertIn("1.0.8", versions)
         self.assertIn("1.0.7", versions)
@@ -28,8 +28,8 @@ class DownloadPageTest(unittest.TestCase):
 
     def test_page_has_notes_and_download(self):
         html = INDEX.read_text(encoding="utf-8")
-        self.assertIn('id="btn-ver">v1.0.19</small>', html)
-        self.assertIn("CursorUsage-1.0.19-arm64.pkg", html)
+        self.assertIn('id="btn-ver">v1.0.21</small>', html)
+        self.assertIn("CursorUsage-1.0.21-arm64.pkg", html)
         self.assertNotIn("/releases/latest", html)
         self.assertIn("What’s new", html)
         self.assertIn('id="latest"', html)
@@ -50,7 +50,7 @@ class DownloadPageTest(unittest.TestCase):
         self.assertTrue((ROOT / "docs" / "assets" / "overview.png").is_file())
         self.assertTrue((ROOT / "docs" / "assets" / "users.png").is_file())
         self.assertTrue((ROOT / "docs" / "assets" / "settings.png").is_file())
-        for version in ("1.0.19", "1.0.18", "1.0.17", "1.0.16", "1.0.15", "1.0.14", "1.0.13", "1.0.12", "1.0.11", "1.0.10", "1.0.9", "1.0.8", "1.0.7", "1.0.6", "1.0.5", "1.0.4", "1.0.3", "1.0.2", "1.0.1"):
+        for version in ("1.0.21", "1.0.20", "1.0.19", "1.0.18", "1.0.17", "1.0.16", "1.0.15", "1.0.14", "1.0.13", "1.0.12", "1.0.11", "1.0.10", "1.0.9", "1.0.8", "1.0.7", "1.0.6", "1.0.5", "1.0.4", "1.0.3", "1.0.2", "1.0.1"):
             self.assertIn('"' + version + '"', html)
         self.assertNotIn("WebKit", html)
         self.assertTrue((ROOT / "docs" / "assets" / "app-icon.png").is_file())

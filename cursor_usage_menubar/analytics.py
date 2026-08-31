@@ -235,6 +235,22 @@ def members_pool_cents(
     return cursor, other
 
 
+def events_for_members(
+    events: tuple[UsageEvent, ...], members: tuple[GroupMember, ...]
+) -> tuple[UsageEvent, ...]:
+    ids = {member.user_id for member in members}
+    emails = {
+        (member.email or "").casefold() for member in members if member.email
+    }
+    out: list[UsageEvent] = []
+    for event in events:
+        if event.user_id is not None and event.user_id in ids:
+            out.append(event)
+        elif event.user_email and event.user_email.casefold() in emails:
+            out.append(event)
+    return tuple(out)
+
+
 def view_pool_cents(
     events: tuple[UsageEvent, ...],
     members: tuple[GroupMember, ...],
